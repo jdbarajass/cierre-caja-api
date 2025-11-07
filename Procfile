@@ -1,1 +1,1 @@
-web: gunicorn ExtraccionJsonAlegra:app --bind 0.0.0.0:$PORT
+web: gunicorn UnionCierreKoajExtraccionAlegraApi:app --bind 0.0.0.0:$PORT

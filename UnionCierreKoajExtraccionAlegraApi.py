@@ -1,4 +1,4 @@
-# ExtraccionJsonAlegra.py
+# UnionCierreKoajExtraccionAlegraApi.py
 from flask import Flask, request, jsonify
 import requests
 from requests.auth import HTTPBasicAuth
@@ -243,7 +243,7 @@ def sum_payments_post():
     # return jsonify(response), 200
 
     # placeholder — remplaza con tu return real:
-    return # ExtraccionJsonAlegra.py
+    return # UnionCierreKoajExtraccionAlegraApi.py
 from flask import Flask, request, jsonify
 import requests
 from requests.auth import HTTPBasicAuth
