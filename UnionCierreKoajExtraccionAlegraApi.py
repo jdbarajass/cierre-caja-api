@@ -15,7 +15,7 @@ except Exception:
 app = Flask(__name__)
 
 # Credenciales desde variables de entorno
-DEFAULT_USERNAME = os.environ.get("ALEGRA_USER", "koaj.puertocarreno@gmail.com")
+DEFAULT_USERNAME = os.environ.get("ALEGRA_USER", "")
 DEFAULT_PASSWORD = os.environ.get("ALEGRA_PASS", "")
 
 # Denominaciones
