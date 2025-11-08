@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS  # ← AGREGAR ESTA LÍNEA
 import requests
 from requests.auth import HTTPBasicAuth
 from datetime import datetime, timezone, timedelta
@@ -13,6 +14,15 @@ except Exception:
     HAVE_ZONEINFO = False
 
 app = Flask(__name__)
+
+# ← AGREGAR ESTAS LÍNEAS PARA CONFIGURAR CORS
+CORS(app, resources={
+    r"/sum_payments": {
+        "origins": ["http://localhost:5173", "http://localhost:5174"],  # Permitir Vite dev server
+        "methods": ["POST", "OPTIONS"],
+        "allow_headers": ["Content-Type"]
+    }
+})
 
 # Credenciales desde variables de entorno
 DEFAULT_USERNAME = os.environ.get("ALEGRA_USER", "")
@@ -202,22 +212,23 @@ def build_alegra_struct(totals, date, username):
     }
 
 # ---------------- endpoint ----------------
-@app.route("/sum_payments", methods=["POST"])
+@app.route("/sum_payments", methods=["POST", "OPTIONS"])  # ← AGREGAR "OPTIONS"
 def sum_payments_post():
     """
     JSON esperado (ejemplo):
     {
-      "date": "2025-10-03",
+      "date": "2025-11-06",
       "coins": {"50": 0, "100": 6, "200": 40, "500": 1, "1000": 0},
       "bills": {"2000": 16, "5000": 7, "10000": 7, "20000": 12, "50000": 12, "100000": 9},
       "excedente": 13500,
       "gastos_operativos": 0,
       "prestamos": 0
     }
-    
-    Ya NO se necesita enviar "password" ni "username" desde el front.
-    Se toman de las variables de entorno del servidor.
     """
+    # Manejar preflight OPTIONS request
+    if request.method == "OPTIONS":
+        return "", 204
+    
     # timestamp de la petición: usar ZoneInfo si está, sino fallback UTC-5
     if HAVE_ZONEINFO:
         try:
