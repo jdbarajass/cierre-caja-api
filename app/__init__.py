@@ -112,7 +112,7 @@ def setup_logging(app):
 
     # Formato detallado para logs
     formatter = logging.Formatter(
-        '[%(asctime)s] %(levelname)s en %(module)s.%(funcName)s:%(lineno)d - %(mensaje)s',
+        '[%(asctime)s] %(levelname)s en %(module)s.%(funcName)s:%(lineno)d - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
 
