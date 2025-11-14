@@ -34,13 +34,17 @@ class Config:
     DENOMINACIONES_BILLETES = [2000, 5000, 10000, 20000, 50000, 100000]
 
     # CORS - Orígenes permitidos
-    ALLOWED_ORIGINS = os.getenv(
-        'ALLOWED_ORIGINS',
-        'https://jdbarajass.pythonanywhere.com,'
-        'https://cierre-caja-api.onrender.com,'
-        'http://localhost:5173,'
-        'http://localhost:5174'
-    ).split(',')
+    ALLOWED_ORIGINS = [
+        origin.strip()
+        for origin in os.getenv(
+            'ALLOWED_ORIGINS',
+            'https://jdbarajass.pythonanywhere.com,'
+            'https://cierre-caja-api.onrender.com,'
+            'http://localhost:5173,'
+            'http://localhost:5174'
+        ).split(',')
+        if origin.strip()  # Eliminar elementos vacíos
+    ]
 
     # Zona horaria
     TIMEZONE = os.getenv('TIMEZONE', 'America/Bogota')
