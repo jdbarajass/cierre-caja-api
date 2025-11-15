@@ -66,8 +66,7 @@ class AlegraClient:
         """
         url = f"{self.base_url}/invoices"
         params = {
-            "date": date,
-            "limit": 500  # Límite razonable para un día
+            "date": date
         }
 
         logger.info(f"Consultando facturas de Alegra para fecha: {date}")
