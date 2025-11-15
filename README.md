@@ -117,6 +117,29 @@ La API estará disponible en `http://localhost:5000` (desarrollo) o `http://loca
 
 ---
 
+## 🖥️ Despliegue Local (Pruebas)
+
+### Inicio rápido
+
+```bash
+# 1. Activar entorno virtual
+venv\Scripts\activate
+
+# 2. Instalar dependencias
+pip install -r requirements.txt
+
+# 3. Ejecutar servidor
+python run.py
+```
+
+### URLs de acceso local
+
+- **Local (pruebas):** http://10.28.168.57:5000
+- **Health Check:** http://10.28.168.57:5000/health
+- **API Docs:** http://10.28.168.57:5000/api/docs
+
+---
+
 ## 🐳 Docker
 
 ### Construir imagen
