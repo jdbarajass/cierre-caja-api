@@ -57,8 +57,9 @@ class TestCashCalculator:
             prestamos
         )
 
-        # 100000 - 5000 - 3000 = 92000
-        assert resultado == 92000
+        # Los gastos operativos ya fueron sacados físicamente del efectivo
+        # Solo se restan los préstamos: 100000 - 3000 = 97000
+        assert resultado == 97000
 
     def test_calcular_venta_efectivo_alegra(self):
         """Test cálculo de venta efectivo"""
@@ -67,15 +68,19 @@ class TestCashCalculator:
         total_general = 500000
         excedente = 13500
         total_base = 450000
+        gastos_operativos = 5000
 
         resultado = calculator.calcular_venta_efectivo_alegra(
             total_general,
             excedente,
-            total_base
+            total_base,
+            gastos_operativos
         )
 
-        # 500000 - 13500 - 450000 = 36500
-        assert resultado == 36500
+        # El total_general ya tiene los gastos descontados, pero Alegra reporta
+        # el efectivo ANTES de descontar gastos, por lo tanto sumamos los gastos:
+        # 500000 - 13500 - 450000 + 5000 = 41500
+        assert resultado == 41500
 
     def test_procesar_cierre_completo(self):
         """Test procesamiento completo de cierre"""

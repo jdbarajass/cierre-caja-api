@@ -141,17 +141,20 @@ def sum_payments():
     excedentes_list = data.get("excedentes", [])
     excedentes_procesados = procesar_excedentes(excedentes_list)
     total_excedente = excedentes_procesados["total_excedente"]
+    excedente_efectivo = excedentes_procesados["excedente_efectivo"]
 
     # Calcular totales de métodos de pago (nueva lógica del backend)
     metodos_pago = data.get("metodos_pago", {})
     metodos_pago_calculados = calcular_totales_metodos_pago(metodos_pago)
 
-    # Procesar cierre de caja (usando el total_excedente calculado)
+    # Procesar cierre de caja (usando excedente_efectivo para cálculos de venta)
+    # IMPORTANTE: Se usa excedente_efectivo porque la venta en efectivo de Alegra
+    # debe compararse solo con el excedente en efectivo, no con otros excedentes
     calculator = CashCalculator()
     cash_result = calculator.procesar_cierre_completo(
         conteo_monedas=conteo_monedas,
         conteo_billetes=conteo_billetes,
-        excedente=total_excedente,
+        excedente=excedente_efectivo,
         gastos_operativos=cash_request.gastos_operativos,
         prestamos=cash_request.prestamos
     )

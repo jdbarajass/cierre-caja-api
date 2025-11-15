@@ -176,10 +176,15 @@ class CashCalculator:
         """
         Aplica ajustes al monto de consignación
 
+        NOTA IMPORTANTE:
+        - Los gastos operativos NO se restan aquí porque ya fueron sacados
+          físicamente del efectivo antes de contar
+        - Solo se restan los préstamos del monto a consignar
+
         Args:
             total_consignar_sin_ajustes: Total antes de ajustes
             excedente: Dinero excedente
-            gastos_operativos: Gastos del día
+            gastos_operativos: Gastos del día (solo para logging, no se resta)
             prestamos: Préstamos realizados
 
         Returns:
@@ -187,14 +192,13 @@ class CashCalculator:
         """
         efectivo_para_consignar_final = (
             total_consignar_sin_ajustes
-            - gastos_operativos
             - prestamos
         )
 
         logger.info(
             f"Ajustes aplicados: "
             f"sin_ajustes={format_cop(total_consignar_sin_ajustes)}, "
-            f"gastos={format_cop(gastos_operativos)}, "
+            f"gastos={format_cop(gastos_operativos)} (ya descontados físicamente), "
             f"prestamos={format_cop(prestamos)}, "
             f"final={format_cop(efectivo_para_consignar_final)}"
         )
@@ -205,27 +209,34 @@ class CashCalculator:
         self,
         total_general: int,
         excedente: float,
-        total_base: int
+        total_base: int,
+        gastos_operativos: float
     ) -> int:
         """
-        Calcula la venta en efectivo según fórmula de Alegra
+        Calcula la venta en efectivo para comparar con Alegra
 
-        Fórmula: TOTAL_GENERAL - EXCEDENTE - BASE
+        NOTA IMPORTANTE:
+        - El total_general es el efectivo contado DESPUÉS de sacar gastos operativos
+        - Alegra reporta el efectivo vendido ANTES de sacar gastos operativos
+        - Por lo tanto, sumamos los gastos operativos al resultado para comparar con Alegra
+
+        Fórmula: TOTAL_GENERAL - EXCEDENTE - BASE + GASTOS_OPERATIVOS
 
         Args:
-            total_general: Total de efectivo contado
-            excedente: Excedente del día
+            total_general: Total de efectivo contado (ya con gastos descontados)
+            excedente: Excedente del día (solo efectivo)
             total_base: Total de la base
+            gastos_operativos: Gastos operativos que ya fueron sacados del efectivo
 
         Returns:
-            Venta en efectivo calculada
+            Venta en efectivo calculada (para comparar con Alegra)
         """
-        venta_efectivo = total_general - excedente - total_base
+        venta_efectivo = total_general - excedente - total_base + gastos_operativos
 
         logger.info(
-            f"Venta efectivo calculada: {format_cop(venta_efectivo)} "
+            f"Venta efectivo calculada para Alegra: {format_cop(venta_efectivo)} "
             f"(total={format_cop(total_general)} - excedente={format_cop(excedente)} - "
-            f"base={format_cop(total_base)})"
+            f"base={format_cop(total_base)} + gastos={format_cop(gastos_operativos)})"
         )
 
         return int(venta_efectivo)
@@ -241,11 +252,16 @@ class CashCalculator:
         """
         Procesa un cierre de caja completo
 
+        NOTA IMPORTANTE:
+        - El parámetro 'excedente' debe ser solo el excedente en EFECTIVO
+        - Los gastos operativos ya fueron sacados físicamente del efectivo antes de contar
+        - El efectivo contado (total_general) ya refleja los gastos descontados
+
         Args:
             conteo_monedas: Dict {denominación: cantidad}
             conteo_billetes: Dict {denominación: cantidad}
-            excedente: Excedente del día
-            gastos_operativos: Gastos operativos
+            excedente: Excedente en EFECTIVO del día (no incluir datafono, nequi, etc)
+            gastos_operativos: Gastos operativos que ya fueron sacados físicamente
             prestamos: Préstamos realizados
 
         Returns:
@@ -279,7 +295,8 @@ class CashCalculator:
         venta_efectivo_diaria_alegra = self.calcular_venta_efectivo_alegra(
             total_general,
             excedente,
-            base_info['total_base']
+            base_info['total_base'],
+            gastos_operativos
         )
 
         # 5. Construir respuesta completa
