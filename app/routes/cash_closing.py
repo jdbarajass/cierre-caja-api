@@ -7,7 +7,13 @@ from flasgger import swag_from
 
 from app.config import Config
 from app.models.requests import CashClosingRequest
-from app.services.cash_calculator import CashCalculator
+from app.services.cash_calculator import (
+    CashCalculator,
+    procesar_excedentes,
+    calcular_totales_metodos_pago,
+    validar_cierre,
+    preparar_respuesta_completa
+)
 from app.services.alegra_client import AlegraClient
 from app.exceptions import (
     ValidationError,
@@ -131,15 +137,31 @@ def sum_payments():
     conteo_monedas = cash_request.get_normalized_coins(Config.DENOMINACIONES_MONEDAS)
     conteo_billetes = cash_request.get_normalized_bills(Config.DENOMINACIONES_BILLETES)
 
-    # Procesar cierre de caja
+    # Procesar excedentes (nueva lógica del backend)
+    excedentes_list = data.get("excedentes", [])
+    excedentes_procesados = procesar_excedentes(excedentes_list)
+    total_excedente = excedentes_procesados["total_excedente"]
+
+    # Calcular totales de métodos de pago (nueva lógica del backend)
+    metodos_pago = data.get("metodos_pago", {})
+    metodos_pago_calculados = calcular_totales_metodos_pago(metodos_pago)
+
+    # Procesar cierre de caja (usando el total_excedente calculado)
     calculator = CashCalculator()
     cash_result = calculator.procesar_cierre_completo(
         conteo_monedas=conteo_monedas,
         conteo_billetes=conteo_billetes,
-        excedente=cash_request.excedente,
+        excedente=total_excedente,
         gastos_operativos=cash_request.gastos_operativos,
         prestamos=cash_request.prestamos
     )
+
+    # Agregar los totales de excedentes al cash_result para incluir en adjustments
+    cash_result['adjustments']['excedente_efectivo'] = excedentes_procesados['excedente_efectivo']
+    cash_result['adjustments']['excedente_datafono'] = excedentes_procesados['excedente_datafono']
+    cash_result['adjustments']['excedente_nequi'] = excedentes_procesados['excedente_nequi']
+    cash_result['adjustments']['excedente_daviplata'] = excedentes_procesados['excedente_daviplata']
+    cash_result['adjustments']['excedente_qr'] = excedentes_procesados['excedente_qr']
 
     # Obtener datos de Alegra
     alegra_result = None
@@ -198,17 +220,21 @@ def sum_payments():
 
         return jsonify(partial_response), 502
 
-    # Construir respuesta completa exitosa
-    response = {
-        "request_datetime": datetime_info['iso'],
-        "request_date": datetime_info['date'],
-        "request_time": datetime_info['time'],
-        "request_tz": tz_used,
-        "date_requested": str(cash_request.date),
-        "username_used": Config.ALEGRA_USER,
-        "cash_count": cash_result,
-        "alegra": alegra_result
-    }
+    # Validar el cierre comparando Alegra con lo registrado
+    validacion_cierre = validar_cierre(alegra_result, metodos_pago_calculados)
+
+    # Construir respuesta completa exitosa usando la nueva función
+    response = preparar_respuesta_completa(
+        datos_alegra=alegra_result,
+        cash_result=cash_result,
+        excedentes_procesados=excedentes_procesados,
+        metodos_pago_calculados=metodos_pago_calculados,
+        validacion_cierre=validacion_cierre,
+        payload_original=data,
+        datetime_info=datetime_info,
+        tz_used=tz_used,
+        username=Config.ALEGRA_USER
+    )
 
     # Log resumen del cierre
     current_app.logger.info("=" * 80)
@@ -217,6 +243,7 @@ def sum_payments():
     current_app.logger.info(f"Fecha: {cash_request.date}")
     current_app.logger.info(f"Total efectivo: {cash_result['totals']['total_general_formatted']}")
     current_app.logger.info(f"Base: {cash_result['base']['total_base_formatted']}")
+    current_app.logger.info(f"Estado de base: {cash_result['base']['mensaje_base']}")
     current_app.logger.info(f"A consignar: {cash_result['consignar']['efectivo_para_consignar_final_formatted']}")
     current_app.logger.info(f"Excedente: {cash_result['adjustments']['excedente_formatted']}")
     current_app.logger.info(f"Gastos: {cash_result['adjustments']['gastos_operativos_formatted']}")
@@ -225,6 +252,13 @@ def sum_payments():
         current_app.logger.info(f"Total venta Alegra: {alegra_result['total_sale']['formatted']}")
         for method, data in alegra_result['results'].items():
             current_app.logger.info(f"  {data['label']}: {data['formatted']}")
+    current_app.logger.info("-" * 80)
+    current_app.logger.info(f"Validación del cierre: {validacion_cierre['validation_status'].upper()}")
+    current_app.logger.info(f"  {validacion_cierre['mensaje_validacion']}")
+    if validacion_cierre['diferencias']['transferencias']['es_significativa']:
+        current_app.logger.info(f"  Diferencia transferencias: {validacion_cierre['diferencias']['transferencias']['diferencia_formatted']}")
+    if validacion_cierre['diferencias']['datafono']['es_significativa']:
+        current_app.logger.info(f"  Diferencia datafono: {validacion_cierre['diferencias']['datafono']['diferencia_formatted']}")
     current_app.logger.info("=" * 80)
 
     return jsonify(response), 200
