@@ -141,8 +141,9 @@ class MetodosPagoRegistrados(BaseModel):
     qr_julieth: int = Field(default=0)
     tarjeta_debito: int = Field(default=0)
     tarjeta_credito: int = Field(default=0)
-    total_transferencias_registradas: int = Field(..., description="Total de transferencias registradas")
-    total_datafono_registrado: int = Field(..., description="Total de datafono registrado")
+    total_transferencias_registradas: int = Field(..., description="Total de transferencias (Nequi + Daviplata + QR + Addi)")
+    total_solo_tarjetas: int = Field(..., description="Total solo tarjetas (Débito + Crédito)")
+    total_datafono_real: int = Field(..., description="Total real del datafono (Tarjetas + Addi)")
 
 
 class DiferenciaValidacion(BaseModel):
@@ -155,6 +156,17 @@ class DiferenciaValidacion(BaseModel):
     diferencia: int = Field(..., description="Diferencia absoluta")
     diferencia_formatted: str = Field(..., description="Diferencia formateada")
     es_significativa: bool = Field(..., description="Si la diferencia es >= 100")
+    detalle: str = Field(..., description="Descripción de qué se está comparando")
+
+
+class DatafonoReal(BaseModel):
+    """Información del datafono real (con Addi incluido)"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    total: int = Field(..., description="Total que realmente llega al datafono")
+    total_formatted: str = Field(..., description="Total formateado")
+    detalle: str = Field(..., description="Descripción del total")
 
 
 class Diferencias(BaseModel):
@@ -164,6 +176,7 @@ class Diferencias(BaseModel):
 
     transferencias: DiferenciaValidacion
     datafono: DiferenciaValidacion
+    datafono_real: DatafonoReal = Field(..., description="Total real del datafono incluyendo Addi")
 
 
 class Validation(BaseModel):

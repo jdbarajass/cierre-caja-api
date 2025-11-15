@@ -410,6 +410,12 @@ def calcular_totales_metodos_pago(metodos_pago):
     """
     Calcula los totales de transferencias y datafono.
 
+    NOTA IMPORTANTE:
+    - Alegra registra "Addi" como transferencia, pero en realidad va al datafono
+    - total_transferencias_registradas: Incluye Addi (para validar con Alegra)
+    - total_solo_tarjetas: Solo débito + crédito (lo que Alegra reporta en debit-card + credit-card)
+    - total_datafono_real: Tarjetas + Addi (lo que realmente llega al datafono de Cristian)
+
     Args:
         metodos_pago: {
             "addi_datafono": 0,
@@ -422,39 +428,55 @@ def calcular_totales_metodos_pago(metodos_pago):
 
     Returns:
         {
-            **metodos_pago,  # Incluir todos los valores originales
-            "total_transferencias_registradas": 0,
-            "total_datafono_registrado": 464000
+            **metodos_pago,
+            "total_transferencias_registradas": nequi + daviplata + qr + addi (para validar con Alegra transfer),
+            "total_solo_tarjetas": debito + credito (para validar con Alegra debit-card + credit-card),
+            "total_datafono_real": debito + credito + addi (lo que realmente llega al datafono)
         }
     """
-    total_transferencias = (
-        int(metodos_pago.get("nequi_luz_helena", 0)) +
-        int(metodos_pago.get("daviplata_jose", 0)) +
-        int(metodos_pago.get("qr_julieth", 0))
-    )
+    addi = int(metodos_pago.get("addi_datafono", 0))
+    nequi = int(metodos_pago.get("nequi_luz_helena", 0))
+    daviplata = int(metodos_pago.get("daviplata_jose", 0))
+    qr = int(metodos_pago.get("qr_julieth", 0))
+    tarjeta_debito = int(metodos_pago.get("tarjeta_debito", 0))
+    tarjeta_credito = int(metodos_pago.get("tarjeta_credito", 0))
 
-    total_datafono = (
-        int(metodos_pago.get("addi_datafono", 0)) +
-        int(metodos_pago.get("tarjeta_debito", 0)) +
-        int(metodos_pago.get("tarjeta_credito", 0))
-    )
+    # Total transferencias para validar con Alegra (incluye Addi porque Alegra lo registra como transferencia)
+    total_transferencias_registradas = nequi + daviplata + qr + addi
+
+    # Total solo tarjetas (lo que Alegra reporta en debit-card + credit-card)
+    total_solo_tarjetas = tarjeta_debito + tarjeta_credito
+
+    # Total real que llega al datafono de Cristian (tarjetas + Addi)
+    total_datafono_real = tarjeta_debito + tarjeta_credito + addi
 
     logger.info(
         f"Totales métodos de pago calculados: "
-        f"transferencias={format_cop(total_transferencias)}, "
-        f"datafono={format_cop(total_datafono)}"
+        f"transferencias_para_alegra={format_cop(total_transferencias_registradas)} "
+        f"(nequi={format_cop(nequi)}, daviplata={format_cop(daviplata)}, "
+        f"qr={format_cop(qr)}, addi={format_cop(addi)}), "
+        f"solo_tarjetas={format_cop(total_solo_tarjetas)}, "
+        f"datafono_real={format_cop(total_datafono_real)}"
     )
 
     return {
         **metodos_pago,
-        "total_transferencias_registradas": total_transferencias,
-        "total_datafono_registrado": total_datafono
+        "total_transferencias_registradas": total_transferencias_registradas,
+        "total_solo_tarjetas": total_solo_tarjetas,
+        "total_datafono_real": total_datafono_real
     }
 
 
 def validar_cierre(datos_alegra, metodos_pago_calculados):
     """
     Valida si el cierre es exitoso comparando Alegra con lo registrado.
+
+    LÓGICA DE VALIDACIÓN:
+    1. Transferencias: Alegra "transfer" debe coincidir con (Nequi + Daviplata + QR + Addi)
+       - Alegra registra Addi como transferencia aunque realmente va al datafono
+    2. Datafono: Alegra "debit-card + credit-card" debe coincidir con (Tarjeta débito + Tarjeta crédito)
+       - Alegra NO incluye Addi en las tarjetas
+    3. Datafono Real: Se calcula como (Tarjetas + Addi) para mostrar lo que realmente llega al datafono
 
     Args:
         datos_alegra: Los datos obtenidos de Alegra
@@ -463,26 +485,16 @@ def validar_cierre(datos_alegra, metodos_pago_calculados):
     Returns:
         {
             "cierre_validado": True/False,
-            "validation_status": "success" | "warning" | "error",
+            "validation_status": "success" | "warning",
             "diferencias": {
-                "transferencias": {
-                    "alegra": 852500,
-                    "registrado": 0,
-                    "diferencia": 852500,
-                    "diferencia_formatted": "$852.500",
-                    "es_significativa": True  # Si es > 100
-                },
-                "datafono": {
-                    "alegra": 464000,
-                    "registrado": 464000,
-                    "diferencia": 0,
-                    "diferencia_formatted": "$0",
-                    "es_significativa": False
-                }
+                "transferencias": {...},
+                "datafono": {...},
+                "datafono_real": {...}
             },
-            "mensaje_validacion": "Diferencias significativas detectadas en transferencias"
+            "mensaje_validacion": "..."
         }
     """
+    # Obtener totales de Alegra
     transferencia_alegra = datos_alegra.get("results", {}).get("transfer", {}).get("total", 0)
 
     datafono_alegra = (
@@ -490,11 +502,14 @@ def validar_cierre(datos_alegra, metodos_pago_calculados):
         datos_alegra.get("results", {}).get("credit-card", {}).get("total", 0)
     )
 
-    transferencias_registradas = metodos_pago_calculados.get("total_transferencias_registradas", 0)
-    datafono_registrado = metodos_pago_calculados.get("total_datafono_registrado", 0)
+    # Obtener totales registrados
+    transferencias_registradas = metodos_pago_calculados.get("total_transferencias_registradas", 0)  # Incluye Addi
+    solo_tarjetas = metodos_pago_calculados.get("total_solo_tarjetas", 0)  # Solo débito + crédito
+    datafono_real = metodos_pago_calculados.get("total_datafono_real", 0)  # Tarjetas + Addi
 
+    # Calcular diferencias
     diff_transferencia = abs(transferencia_alegra - transferencias_registradas)
-    diff_datafono = abs(datafono_alegra - datafono_registrado)
+    diff_datafono = abs(datafono_alegra - solo_tarjetas)
 
     # Validación: se considera exitoso si ambas diferencias son < 100
     cierre_validado = diff_transferencia < 100 and diff_datafono < 100
@@ -507,14 +522,21 @@ def validar_cierre(datos_alegra, metodos_pago_calculados):
             "registrado": transferencias_registradas,
             "diferencia": diff_transferencia,
             "diferencia_formatted": format_cop(diff_transferencia),
-            "es_significativa": diff_transferencia >= 100
+            "es_significativa": diff_transferencia >= 100,
+            "detalle": "Alegra transfer vs (Nequi + Daviplata + QR + Addi)"
         },
         "datafono": {
             "alegra": datafono_alegra,
-            "registrado": datafono_registrado,
+            "registrado": solo_tarjetas,
             "diferencia": diff_datafono,
             "diferencia_formatted": format_cop(diff_datafono),
-            "es_significativa": diff_datafono >= 100
+            "es_significativa": diff_datafono >= 100,
+            "detalle": "Alegra debit+credit vs (Tarjeta débito + Tarjeta crédito)"
+        },
+        "datafono_real": {
+            "total": datafono_real,
+            "total_formatted": format_cop(datafono_real),
+            "detalle": "Lo que realmente llega al datafono de Cristian (Tarjetas + Addi)"
         }
     }
 
@@ -529,6 +551,17 @@ def validar_cierre(datos_alegra, metodos_pago_calculados):
 
     logger.info(
         f"Validación de cierre: {validation_status} - {mensaje_validacion}"
+    )
+    logger.info(
+        f"  Transferencias Alegra: {format_cop(transferencia_alegra)} vs "
+        f"Registrado: {format_cop(transferencias_registradas)} (diff: {format_cop(diff_transferencia)})"
+    )
+    logger.info(
+        f"  Datafono Alegra: {format_cop(datafono_alegra)} vs "
+        f"Solo tarjetas: {format_cop(solo_tarjetas)} (diff: {format_cop(diff_datafono)})"
+    )
+    logger.info(
+        f"  Datafono Real (con Addi): {format_cop(datafono_real)}"
     )
 
     return {
