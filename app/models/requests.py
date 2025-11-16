@@ -64,6 +64,22 @@ class CashClosingRequest(BaseModel):
         description="Métodos de pago registrados manualmente"
     )
 
+    # Nuevos campos para timezone
+    timezone: str = Field(
+        default="America/Bogota",
+        description="Zona horaria del frontend (debe ser America/Bogota)"
+    )
+
+    utc_offset: str = Field(
+        default="-05:00",
+        description="Offset UTC de la zona horaria"
+    )
+
+    request_timestamp: str = Field(
+        default="",
+        description="Timestamp completo ISO 8601 con zona horaria desde el frontend"
+    )
+
     @field_validator('coins', 'bills')
     @classmethod
     def validate_non_negative(cls, v):
@@ -76,11 +92,11 @@ class CashClosingRequest(BaseModel):
     @field_validator('date')
     @classmethod
     def validate_date_not_future(cls, v):
-        """Valida que la fecha no sea futura"""
-        from datetime import date as date_module
-        today = date_module.today()
-        if v > today:
-            raise ValueError(f"La fecha no puede ser futura: {v}")
+        """Valida que la fecha no sea futura (usando zona horaria de Colombia)"""
+        from app.utils.timezone import get_colombia_now
+        today_colombia = get_colombia_now().date()
+        if v > today_colombia:
+            raise ValueError(f"La fecha no puede ser futura: {v} (hoy en Colombia: {today_colombia})")
         return v
 
     def get_normalized_coins(self, valid_denominations: list) -> Dict[int, int]:
