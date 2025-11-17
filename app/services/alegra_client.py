@@ -239,6 +239,231 @@ class AlegraClient:
         totals = self.process_invoices(invoices)
         return self.build_alegra_response(totals, date, self.username)
 
+    def get_invoices_by_date_range(
+        self,
+        start_date: str,
+        end_date: str,
+        start: int = 0,
+        limit: int = 30
+    ) -> List[Dict]:
+        """
+        Obtiene facturas de Alegra en un rango de fechas con paginación
+
+        Args:
+            start_date: Fecha de inicio en formato YYYY-MM-DD
+            end_date: Fecha de fin en formato YYYY-MM-DD
+            start: Offset para paginación (default: 0)
+            limit: Cantidad de registros por página (default: 30)
+
+        Returns:
+            Lista de facturas
+
+        Raises:
+            AlegraTimeoutError: Si la petición excede el timeout
+            AlegraAuthError: Si las credenciales son inválidas
+            AlegraConnectionError: Para otros errores de conexión
+        """
+        url = f"{self.base_url}/invoices"
+        params = {
+            "date": f"{start_date},{end_date}",
+            "start": start,
+            "limit": limit
+        }
+
+        logger.info(
+            f"Consultando facturas de Alegra desde {start_date} hasta {end_date} "
+            f"(start={start}, limit={limit})"
+        )
+
+        try:
+            response = self.session.get(
+                url,
+                params=params,
+                timeout=self.timeout
+            )
+
+            # Manejar diferentes status codes
+            if response.status_code == 401:
+                logger.error("Credenciales de Alegra inválidas (401)")
+                raise AlegraAuthError("Credenciales de Alegra inválidas")
+
+            if response.status_code == 403:
+                logger.error("Acceso prohibido a Alegra (403)")
+                raise AlegraAuthError("Acceso prohibido. Verifique permisos de la cuenta")
+
+            if response.status_code == 404:
+                logger.warning(f"Endpoint no encontrado en Alegra (404): {url}")
+                raise AlegraConnectionError(
+                    "Endpoint no encontrado en Alegra",
+                    details={'url': url}
+                )
+
+            if response.status_code >= 500:
+                logger.error(f"Error del servidor de Alegra ({response.status_code})")
+                raise AlegraConnectionError(
+                    f"Error del servidor de Alegra (HTTP {response.status_code})",
+                    details={'status_code': response.status_code}
+                )
+
+            response.raise_for_status()
+            data = response.json()
+
+            if not isinstance(data, list):
+                logger.warning(f"Respuesta de Alegra no es una lista: {type(data)}")
+                data = []
+
+            logger.info(f"✓ {len(data)} facturas obtenidas")
+            return data
+
+        except requests.exceptions.Timeout:
+            logger.error(f"Timeout al conectar con Alegra (>{self.timeout}s)")
+            raise AlegraTimeoutError(
+                f"Timeout al conectar con Alegra (>{self.timeout}s)"
+            )
+
+        except requests.exceptions.ConnectionError as e:
+            logger.error(f"Error de conexión con Alegra: {str(e)}")
+            raise AlegraConnectionError(
+                "No se pudo conectar con Alegra. Verifique la conexión a internet",
+                details={'error': str(e)}
+            )
+
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"Error HTTP de Alegra: {str(e)}")
+            raise AlegraConnectionError(
+                f"Error HTTP de Alegra: {e.response.status_code}",
+                details={'error': str(e)}
+            )
+
+        except ValueError as e:
+            logger.error(f"Error al parsear JSON de Alegra: {str(e)}")
+            raise AlegraConnectionError(
+                "Respuesta inválida de Alegra (JSON mal formado)",
+                details={'error': str(e)}
+            )
+
+        except Exception as e:
+            logger.error(f"Error inesperado con Alegra: {str(e)}", exc_info=True)
+            raise AlegraConnectionError(
+                f"Error inesperado al conectar con Alegra: {str(e)}",
+                details={'error': str(e)}
+            )
+
+    def get_all_invoices_in_range(
+        self,
+        start_date: str,
+        end_date: str,
+        max_pages: int = 100
+    ) -> List[Dict]:
+        """
+        Obtiene TODAS las facturas en un rango de fechas manejando paginación automáticamente
+
+        Args:
+            start_date: Fecha de inicio en formato YYYY-MM-DD
+            end_date: Fecha de fin en formato YYYY-MM-DD
+            max_pages: Máximo número de páginas a consultar (default: 100)
+
+        Returns:
+            Lista completa de facturas
+        """
+        all_invoices = []
+        page = 0
+        limit = 30
+
+        logger.info(f"Iniciando consulta completa de facturas desde {start_date} hasta {end_date}")
+
+        while page < max_pages:
+            start = page * limit
+            invoices = self.get_invoices_by_date_range(start_date, end_date, start, limit)
+
+            if not invoices:
+                logger.info(f"No hay más facturas. Total páginas consultadas: {page + 1}")
+                break
+
+            all_invoices.extend(invoices)
+            logger.info(f"Página {page + 1}: {len(invoices)} facturas. Total acumulado: {len(all_invoices)}")
+
+            # Si obtuvimos menos registros que el límite, es la última página
+            if len(invoices) < limit:
+                logger.info(f"Última página alcanzada. Total facturas: {len(all_invoices)}")
+                break
+
+            page += 1
+
+        logger.info(f"✓ Consulta completa finalizada. Total de facturas: {len(all_invoices)}")
+        return all_invoices
+
+    def get_monthly_sales_summary(
+        self,
+        start_date: str,
+        end_date: str
+    ) -> Dict:
+        """
+        Obtiene el resumen de ventas para un rango de fechas (mes)
+
+        Args:
+            start_date: Fecha de inicio en formato YYYY-MM-DD
+            end_date: Fecha de fin en formato YYYY-MM-DD
+
+        Returns:
+            Dict con resumen de ventas mensuales
+        """
+        # Obtener todas las facturas del mes
+        invoices = self.get_all_invoices_in_range(start_date, end_date)
+
+        # Calcular totales
+        total_vendido = 0
+        cantidad_facturas = len(invoices)
+
+        # Totales por método de pago
+        totales_por_metodo = {
+            "credit-card": 0,
+            "debit-card": 0,
+            "transfer": 0,
+            "cash": 0
+        }
+
+        for inv in invoices:
+            # Sumar el total de la factura
+            total_invoice = safe_number(inv.get("total", 0))
+            total_vendido += total_invoice
+
+            # Procesar pagos por método
+            payments = inv.get("payments", []) or []
+            for p in payments:
+                amount = safe_number(p.get("amount", 0))
+                pm_raw = p.get("paymentMethod", "")
+                method = normalize_payment_method(pm_raw)
+
+                if method in totales_por_metodo:
+                    totales_por_metodo[method] += amount
+                else:
+                    totales_por_metodo["cash"] += amount
+
+        # Construir respuesta
+        payment_details = {}
+        for method, total in totales_por_metodo.items():
+            payment_details[method] = {
+                "label": get_payment_method_label(method),
+                "total": int(total),
+                "formatted": format_cop(total)
+            }
+
+        return {
+            "date_range": {
+                "start": start_date,
+                "end": end_date
+            },
+            "total_vendido": {
+                "label": "TOTAL VENDIDO EN EL PERIODO",
+                "total": int(total_vendido),
+                "formatted": format_cop(total_vendido)
+            },
+            "cantidad_facturas": cantidad_facturas,
+            "payment_methods": payment_details,
+            "username_used": self.username
+        }
+
     def health_check(self) -> bool:
         """
         Verifica si el servicio de Alegra está disponible
