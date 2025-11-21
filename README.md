@@ -21,6 +21,9 @@ Esta versión incluye una refactorización completa del código con mejores prá
 - ✅ **Tests unitarios** con pytest
 - ✅ **Soporte Docker** para despliegue containerizado
 - ✅ **CORS configurado** para frontend
+- ✅ **Autenticación JWT** con tokens seguros
+- ✅ **Control de intentos de login** con bloqueo temporal
+- ✅ **Middlewares de autenticación** para proteger rutas
 
 ---
 
@@ -34,18 +37,26 @@ cierre-caja-api/
 │   ├── exceptions.py         # Excepciones custom
 │   ├── routes/               # Endpoints de la API
 │   │   ├── cash_closing.py   # Endpoint principal
-│   │   └── health.py         # Health check
+│   │   ├── health.py         # Health check
+│   │   └── auth.py           # Autenticación
 │   ├── services/             # Lógica de negocio
 │   │   ├── alegra_client.py  # Cliente API Alegra
 │   │   ├── cash_calculator.py# Calculador de caja
-│   │   └── knapsack_solver.py# Algoritmo DP
-│   ├── models/               # Schemas Pydantic
+│   │   ├── knapsack_solver.py# Algoritmo DP
+│   │   └── jwt_service.py    # Servicio JWT
+│   ├── middlewares/          # Middlewares
+│   │   └── auth.py           # Middleware de autenticación
+│   ├── models/               # Schemas y modelos
 │   │   ├── requests.py       # Request models
-│   │   └── responses.py      # Response models
+│   │   ├── responses.py      # Response models
+│   │   └── user.py           # Modelo de usuario
 │   └── utils/                # Utilidades
 │       ├── formatters.py     # Formateo de datos
 │       ├── validators.py     # Validaciones
 │       └── timezone.py       # Manejo de zonas horarias
+├── scripts/                  # Scripts utilitarios
+│   ├── generate_jwt_secret.py# Generador de claves JWT
+│   └── init_admin.py         # Inicializador de admin
 ├── tests/                    # Tests unitarios
 ├── logs/                     # Archivos de log
 ├── run.py                    # Entry point
@@ -311,6 +322,117 @@ Health check para monitoreo.
 
 ---
 
+## 🔐 Autenticación JWT
+
+El sistema incluye autenticación basada en tokens JWT para proteger endpoints sensibles.
+
+### Endpoints de Autenticación
+
+#### POST /auth/login
+
+Autentica al usuario y retorna un token JWT.
+
+**Request:**
+
+```json
+{
+  "email": "ventaspuertocarreno@gmail.com",
+  "password": "VentasCarreno2025.*"
+}
+```
+
+**Response (200):**
+
+```json
+{
+  "success": true,
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "email": "ventaspuertocarreno@gmail.com",
+    "name": "Usuario Ventas Puerto Carreño",
+    "role": "admin"
+  }
+}
+```
+
+**Errores posibles:**
+
+- `400`: Datos de entrada inválidos
+- `401`: Credenciales incorrectas
+- `403`: Cuenta bloqueada por múltiples intentos fallidos
+
+#### GET /auth/verify
+
+Verifica si un token JWT es válido.
+
+**Headers:**
+
+```
+Authorization: Bearer <token>
+```
+
+**Response (200):**
+
+```json
+{
+  "success": true,
+  "message": "Token válido",
+  "user": {
+    "userId": 1,
+    "email": "ventaspuertocarreno@gmail.com",
+    "role": "admin"
+  }
+}
+```
+
+### Protección de Rutas
+
+Para proteger endpoints con autenticación JWT, usa los decoradores:
+
+```python
+from app.middlewares.auth import token_required, role_required, get_current_user
+
+@app.route('/protected')
+@token_required
+def protected_route():
+    user = get_current_user()
+    return jsonify({'user': user})
+
+@app.route('/admin-only')
+@token_required
+@role_required('admin')
+def admin_route():
+    return jsonify({'message': 'Admin access granted'})
+```
+
+### Seguridad
+
+- **Bloqueo de cuenta**: Después de 5 intentos fallidos, la cuenta se bloquea por 15 minutos
+- **Expiración de tokens**: Los tokens expiran después de 8 horas (configurable)
+- **Algoritmo**: HS256
+
+---
+
+## 🔧 Scripts Utilitarios
+
+### Generar clave secreta JWT
+
+```bash
+python scripts/generate_jwt_secret.py
+```
+
+Genera una clave secreta segura de 64 caracteres para usar en `JWT_SECRET_KEY`.
+
+### Inicializar usuario administrador
+
+```bash
+python scripts/init_admin.py
+```
+
+Crea o actualiza el usuario administrador en la base de datos. Útil para configuración inicial.
+
+---
+
 ## 🧪 Testing
 
 ### Ejecutar todos los tests
@@ -339,15 +461,38 @@ pytest tests/test_cash_calculator.py
 
 ### Variables de Entorno Críticas
 
+#### Configuración General
+- `FLASK_ENV`: Ambiente (development, production, testing)
+- `DEBUG`: Modo debug (True/False)
+- `SECRET_KEY`: Clave secreta de Flask
+- `PORT`: Puerto del servidor (por defecto: 5000)
+
+#### Credenciales Alegra
 - `ALEGRA_USER`: Usuario/email de Alegra
 - `ALEGRA_PASS`: Token de API de Alegra
-- `SECRET_KEY`: Clave secreta de Flask
 - `ALEGRA_API_BASE_URL`: URL base de la API de Alegra
+- `ALEGRA_TIMEOUT`: Timeout para requests (por defecto: 30)
+
+#### Configuración de Negocio
 - `BASE_OBJETIVO`: Monto base que debe quedar en caja (por defecto: 450000)
 - `UMBRAL_MENUDO`: Valor máximo para considerar un billete/moneda como menudo (por defecto: 10000)
-- `TIMEZONE`: Zona horaria (por defecto: America/Bogota)
 
-Ver `.env.example` para todas las variables disponibles.
+#### Autenticación JWT
+- `JWT_SECRET_KEY`: Clave secreta para firmar tokens (mínimo 32 caracteres)
+- `JWT_EXPIRATION_HOURS`: Tiempo de expiración del token en horas (por defecto: 8)
+
+#### Seguridad
+- `MAX_LOGIN_ATTEMPTS`: Intentos de login antes de bloquear (por defecto: 5)
+- `LOCKOUT_TIME_MINUTES`: Tiempo de bloqueo en minutos (por defecto: 15)
+
+#### CORS
+- `ALLOWED_ORIGINS`: Lista de orígenes permitidos separados por comas
+
+#### Otros
+- `TIMEZONE`: Zona horaria (por defecto: America/Bogota)
+- `DATABASE_URL`: URL de conexión a la base de datos
+
+Ver `.env.example` para todas las variables disponibles con ejemplos.
 
 ### 📖 Documentación Adicional
 
@@ -388,6 +533,16 @@ Usa **Bounded Knapsack con Programación Dinámica** para calcular la base exact
 ---
 
 ## 📝 Changelog
+
+### v2.1.0 (2025-11-19)
+
+- ✨ Sistema de autenticación JWT completo
+- ✨ Endpoints de login y verificación de token
+- ✨ Middlewares de autenticación (`@token_required`, `@role_required`)
+- ✨ Control de intentos de login con bloqueo temporal
+- ✨ Scripts utilitarios para generar claves y crear admin
+- ✨ Modelo de usuario para base de datos
+- 🔒 Mejoras de seguridad en configuración
 
 ### v2.0.0 (2025-11-14)
 
