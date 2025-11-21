@@ -33,6 +33,11 @@ http://localhost:5000/health             ✅ CORRECTO (Health check)
 | Health Check | `GET` | `/health` | ❌ No | Verificar estado del servidor |
 | Cierre de Caja | `POST` | `/api/sum_payments` | ✅ Sí | Procesar cierre de caja diario |
 | Ventas Mensuales | `GET` | `/api/monthly_sales` | ✅ Sí | Obtener resumen de ventas del mes |
+| Análisis de Productos (JSON) | `GET` | `/api/products/analysis` | ✅ Sí | Análisis completo de productos en JSON |
+| Análisis de Productos (PDF) | `GET` | `/api/products/analysis/pdf` | ✅ Sí | Descargar reporte de productos en PDF |
+| Top Productos | `GET` | `/api/products/top-sellers` | ✅ Sí | Top productos más vendidos |
+| Análisis por Categorías | `GET` | `/api/products/categories` | ✅ Sí | Ventas agrupadas por categoría |
+| Resumen de Productos | `GET` | `/api/products/summary` | ✅ Sí | Resumen ejecutivo de productos |
 
 ---
 
@@ -785,6 +790,680 @@ VITE_API_MONTHLY_SALES_TIMEOUT=180000
 ```javascript
 // Usar en el código
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+```
+
+---
+
+---
+
+## 📦 6. ANÁLISIS DE PRODUCTOS (JSON) - `/api/products/analysis`
+
+### Descripción
+Obtiene análisis completo de productos vendidos en formato JSON para visualización en pantalla. Incluye:
+- Resumen ejecutivo con métricas principales
+- Top 10 productos más vendidos (sin unificar)
+- Top 10 productos unificados (agrupa variantes)
+- Listado completo de todos los productos
+- Metadata del reporte
+
+### URL
+```
+GET http://localhost:5000/api/products/analysis?date=2025-11-20
+```
+
+### Headers
+```javascript
+{
+  "Authorization": "Bearer <token>"
+}
+```
+
+### Query Parameters
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| `date` | string | ❌ No | Fecha específica (YYYY-MM-DD). Si se omite, usa el día actual |
+| `start_date` | string | ❌ No | Fecha de inicio del rango (YYYY-MM-DD) |
+| `end_date` | string | ❌ No | Fecha de fin del rango (YYYY-MM-DD) |
+
+**Nota**: Usar `date` para un día específico O usar `start_date` + `end_date` para un rango. No combinar.
+
+### Respuesta Exitosa (200)
+```json
+{
+  "success": true,
+  "date_range": "2025-11-20",
+  "data": {
+    "resumen_ejecutivo": {
+      "total_productos_vendidos": 123,
+      "total_productos_vendidos_formatted": "123",
+      "ingresos_totales": 5000000,
+      "ingresos_totales_formatted": "$ 5.000.000",
+      "producto_mas_vendido": "CAMISETA MUJER 34900 / 1052349003",
+      "unidades_mas_vendido": 45,
+      "unidades_mas_vendido_formatted": "45",
+      "numero_facturas": 25,
+      "numero_items_unicos": 87
+    },
+    "top_10_productos": [
+      {
+        "ranking": 1,
+        "nombre": "CAMISETA MUJER 34900 / 1052349003",
+        "cantidad": 45,
+        "cantidad_formatted": "45",
+        "ingresos": 1570500,
+        "ingresos_formatted": "$ 1.570.500",
+        "porcentaje_participacion": 36.59,
+        "porcentaje_participacion_formatted": "36.59%"
+      }
+    ],
+    "top_10_productos_unificados": [
+      {
+        "ranking": 1,
+        "nombre_base": "CAMISETA MUJER",
+        "cantidad": 78,
+        "cantidad_formatted": "78",
+        "ingresos": 2720000,
+        "ingresos_formatted": "$ 2.720.000",
+        "porcentaje_participacion": 63.41,
+        "porcentaje_participacion_formatted": "63.41%",
+        "numero_variantes": 3,
+        "variantes": [
+          "CAMISETA MUJER 34900 / 1052349003",
+          "CAMISETA MUJER 39900 / 1052399003",
+          "CAMISETA MUJER 29900 / 1052299003"
+        ]
+      }
+    ],
+    "todos_productos_unificados": [ /* ... */ ],
+    "listado_completo": [ /* ... */ ],
+    "metadata": {
+      "fecha_generacion": "2025-11-21T00:30:00",
+      "numero_facturas_procesadas": 25,
+      "numero_items_procesados": 123
+    }
+  }
+}
+```
+
+### Ejemplo con Axios
+```javascript
+async function getProductsAnalysis(date = null, startDate = null, endDate = null) {
+  const token = localStorage.getItem('token');
+
+  let params = {};
+  if (date) {
+    params.date = date;
+  } else if (startDate && endDate) {
+    params.start_date = startDate;
+    params.end_date = endDate;
+  }
+
+  const response = await axios.get('http://localhost:5000/api/products/analysis', {
+    params,
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  return response.data;
+}
+
+// Uso
+const analisisHoy = await getProductsAnalysis(); // Día actual
+const analisisFecha = await getProductsAnalysis('2025-11-20'); // Fecha específica
+const analisisRango = await getProductsAnalysis(null, '2025-11-01', '2025-11-30'); // Rango
+```
+
+---
+
+## 📄 7. ANÁLISIS DE PRODUCTOS (PDF) - `/api/products/analysis/pdf`
+
+### Descripción
+Descarga un reporte completo de productos en formato PDF profesional. El PDF incluye todas las tablas y análisis formateados para impresión.
+
+### URL
+```
+GET http://localhost:5000/api/products/analysis/pdf?date=2025-11-20
+```
+
+### Headers
+```javascript
+{
+  "Authorization": "Bearer <token>"
+}
+```
+
+### Query Parameters
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| `date` | string | ❌ No | Fecha específica (YYYY-MM-DD) |
+| `start_date` | string | ❌ No | Fecha de inicio del rango (YYYY-MM-DD) |
+| `end_date` | string | ❌ No | Fecha de fin del rango (YYYY-MM-DD) |
+
+### Respuesta Exitosa (200)
+Retorna un archivo PDF descargable con el nombre:
+- `reporte_productos_KOAJ_2025-11-20.pdf` (día específico)
+- `reporte_productos_KOAJ_2025-11-01_al_2025-11-30.pdf` (rango)
+
+### Errores Posibles
+```json
+// 404 - No hay facturas en el período
+{
+  "success": false,
+  "error": "No se encontraron facturas para el período especificado"
+}
+```
+
+### Ejemplo con Axios (descarga de archivo)
+```javascript
+async function downloadProductsPDF(date = null, startDate = null, endDate = null) {
+  const token = localStorage.getItem('token');
+
+  let params = {};
+  if (date) {
+    params.date = date;
+  } else if (startDate && endDate) {
+    params.start_date = startDate;
+    params.end_date = endDate;
+  }
+
+  const response = await axios.get('http://localhost:5000/api/products/analysis/pdf', {
+    params,
+    headers: {
+      'Authorization': `Bearer ${token}`
+    },
+    responseType: 'blob' // ⚠️ IMPORTANTE: Para descargar archivo
+  });
+
+  // Crear URL del blob y descargar
+  const url = window.URL.createObjectURL(new Blob([response.data]));
+  const link = document.createElement('a');
+  link.href = url;
+
+  // Extraer nombre del archivo del header Content-Disposition o usar por defecto
+  const contentDisposition = response.headers['content-disposition'];
+  let filename = 'reporte_productos_KOAJ.pdf';
+  if (contentDisposition) {
+    const filenameMatch = contentDisposition.match(/filename="?(.+)"?/);
+    if (filenameMatch) filename = filenameMatch[1];
+  }
+
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+// Uso
+await downloadProductsPDF('2025-11-20'); // Descarga PDF del día
+```
+
+---
+
+## 🏆 8. TOP PRODUCTOS - `/api/products/top-sellers`
+
+### Descripción
+Obtiene los productos más vendidos (top N) con opción de unificar variantes o mostrarlos individualmente.
+
+### URL
+```
+GET http://localhost:5000/api/products/top-sellers?date=2025-11-20&limit=10&unified=false
+```
+
+### Headers
+```javascript
+{
+  "Authorization": "Bearer <token>"
+}
+```
+
+### Query Parameters
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| `date` | string | ❌ No | Fecha específica (YYYY-MM-DD) |
+| `start_date` | string | ❌ No | Fecha de inicio del rango |
+| `end_date` | string | ❌ No | Fecha de fin del rango |
+| `limit` | number | ❌ No | Número de productos a retornar (default: 10) |
+| `unified` | boolean | ❌ No | `true`: unifica variantes, `false`: productos individuales (default: false) |
+
+### Respuesta Exitosa (200)
+
+#### Con `unified=false` (productos individuales):
+```json
+{
+  "success": true,
+  "date_range": "2025-11-20",
+  "unified": false,
+  "products": [
+    {
+      "ranking": 1,
+      "nombre": "CAMISETA MUJER 34900 / 1052349003",
+      "cantidad": 45,
+      "cantidad_formatted": "45",
+      "ingresos": 1570500,
+      "ingresos_formatted": "$ 1.570.500",
+      "porcentaje_participacion": 36.59,
+      "porcentaje_participacion_formatted": "36.59%"
+    }
+  ]
+}
+```
+
+#### Con `unified=true` (productos unificados):
+```json
+{
+  "success": true,
+  "date_range": "2025-11-20",
+  "unified": true,
+  "products": [
+    {
+      "ranking": 1,
+      "nombre_base": "CAMISETA MUJER",
+      "cantidad": 78,
+      "cantidad_formatted": "78",
+      "ingresos": 2720000,
+      "ingresos_formatted": "$ 2.720.000",
+      "porcentaje_participacion": 63.41,
+      "porcentaje_participacion_formatted": "63.41%",
+      "numero_variantes": 3,
+      "variantes": [
+        "CAMISETA MUJER 34900 / 1052349003",
+        "CAMISETA MUJER 39900 / 1052399003",
+        "CAMISETA MUJER 29900 / 1052299003"
+      ]
+    }
+  ]
+}
+```
+
+### Ejemplo con Axios
+```javascript
+async function getTopSellers(options = {}) {
+  const token = localStorage.getItem('token');
+
+  const { date, startDate, endDate, limit = 10, unified = false } = options;
+
+  let params = { limit, unified };
+  if (date) {
+    params.date = date;
+  } else if (startDate && endDate) {
+    params.start_date = startDate;
+    params.end_date = endDate;
+  }
+
+  const response = await axios.get('http://localhost:5000/api/products/top-sellers', {
+    params,
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  return response.data;
+}
+
+// Uso
+const top10Individual = await getTopSellers({ date: '2025-11-20', limit: 10, unified: false });
+const top10Unificado = await getTopSellers({ date: '2025-11-20', limit: 10, unified: true });
+```
+
+---
+
+## 📊 9. ANÁLISIS POR CATEGORÍAS - `/api/products/categories`
+
+### Descripción
+Agrupa productos por categorías detectadas automáticamente (CAMISETA, JEAN, BLUSA, POLO, MEDIAS, etc.) y retorna análisis por cada categoría.
+
+### URL
+```
+GET http://localhost:5000/api/products/categories?date=2025-11-20
+```
+
+### Headers
+```javascript
+{
+  "Authorization": "Bearer <token>"
+}
+```
+
+### Query Parameters
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| `date` | string | ❌ No | Fecha específica (YYYY-MM-DD) |
+| `start_date` | string | ❌ No | Fecha de inicio del rango |
+| `end_date` | string | ❌ No | Fecha de fin del rango |
+
+### Respuesta Exitosa (200)
+```json
+{
+  "success": true,
+  "date_range": "2025-11-20",
+  "data": {
+    "categorias": [
+      {
+        "categoria": "CAMISETA",
+        "cantidad": 78,
+        "cantidad_formatted": "78",
+        "ingresos": 2720000,
+        "ingresos_formatted": "$ 2.720.000",
+        "porcentaje_participacion": 63.41,
+        "porcentaje_participacion_formatted": "63.41%",
+        "numero_productos_diferentes": 12
+      },
+      {
+        "categoria": "JEAN",
+        "cantidad": 25,
+        "cantidad_formatted": "25",
+        "ingresos": 1875000,
+        "ingresos_formatted": "$ 1.875.000",
+        "porcentaje_participacion": 20.33,
+        "porcentaje_participacion_formatted": "20.33%",
+        "numero_productos_diferentes": 8
+      },
+      {
+        "categoria": "OTROS",
+        "cantidad": 20,
+        "cantidad_formatted": "20",
+        "ingresos": 405000,
+        "ingresos_formatted": "$ 405.000",
+        "porcentaje_participacion": 16.26,
+        "porcentaje_participacion_formatted": "16.26%",
+        "numero_productos_diferentes": 15
+      }
+    ],
+    "total_categorias": 3
+  }
+}
+```
+
+### Categorías Detectadas Automáticamente
+- CAMISETA
+- JEAN
+- BLUSA
+- POLO
+- MEDIAS
+- PANTALON
+- SHORT
+- VESTIDO
+- FALDA
+- SUDADERA
+- OTROS (para productos que no coinciden con ninguna categoría)
+
+### Ejemplo con Axios
+```javascript
+async function getCategoriesAnalysis(date = null, startDate = null, endDate = null) {
+  const token = localStorage.getItem('token');
+
+  let params = {};
+  if (date) {
+    params.date = date;
+  } else if (startDate && endDate) {
+    params.start_date = startDate;
+    params.end_date = endDate;
+  }
+
+  const response = await axios.get('http://localhost:5000/api/products/categories', {
+    params,
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  return response.data;
+}
+
+// Uso
+const categorias = await getCategoriesAnalysis('2025-11-20');
+console.log(categorias.data.categorias); // Array de categorías ordenadas por cantidad
+```
+
+---
+
+## 📈 10. RESUMEN DE PRODUCTOS - `/api/products/summary`
+
+### Descripción
+Obtiene un resumen ejecutivo rápido con las métricas principales de productos. Ideal para dashboards y cards de resumen.
+
+### URL
+```
+GET http://localhost:5000/api/products/summary?date=2025-11-20
+```
+
+### Headers
+```javascript
+{
+  "Authorization": "Bearer <token>"
+}
+```
+
+### Query Parameters
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| `date` | string | ❌ No | Fecha específica (YYYY-MM-DD) |
+| `start_date` | string | ❌ No | Fecha de inicio del rango |
+| `end_date` | string | ❌ No | Fecha de fin del rango |
+
+### Respuesta Exitosa (200)
+```json
+{
+  "success": true,
+  "date_range": "2025-11-20",
+  "summary": {
+    "total_productos_vendidos": 123,
+    "total_productos_vendidos_formatted": "123",
+    "ingresos_totales": 5000000,
+    "ingresos_totales_formatted": "$ 5.000.000",
+    "producto_mas_vendido": "CAMISETA MUJER 34900 / 1052349003",
+    "unidades_mas_vendido": 45,
+    "unidades_mas_vendido_formatted": "45",
+    "numero_facturas": 25,
+    "numero_items_unicos": 87
+  }
+}
+```
+
+### Campos del Resumen
+
+| Campo | Descripción |
+|-------|-------------|
+| `total_productos_vendidos` | Total de unidades vendidas (incluyendo BOLSA PAPEL) |
+| `ingresos_totales` | Suma de ingresos de todos los productos |
+| `producto_mas_vendido` | Nombre del producto con más unidades vendidas (excluye BOLSA PAPEL) |
+| `unidades_mas_vendido` | Cantidad de unidades del producto más vendido |
+| `numero_facturas` | Número de facturas procesadas |
+| `numero_items_unicos` | Número de productos diferentes vendidos |
+
+### Ejemplo con Axios
+```javascript
+async function getProductsSummary(date = null, startDate = null, endDate = null) {
+  const token = localStorage.getItem('token');
+
+  let params = {};
+  if (date) {
+    params.date = date;
+  } else if (startDate && endDate) {
+    params.start_date = startDate;
+    params.end_date = endDate;
+  }
+
+  const response = await axios.get('http://localhost:5000/api/products/summary', {
+    params,
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  return response.data;
+}
+
+// Uso en Dashboard
+const summary = await getProductsSummary('2025-11-20');
+
+// Mostrar en cards
+displayCard('Total Productos', summary.summary.total_productos_vendidos_formatted);
+displayCard('Ingresos', summary.summary.ingresos_totales_formatted);
+displayCard('Producto Top', summary.summary.producto_mas_vendido);
+```
+
+---
+
+## 🎨 Ejemplo de Implementación en React (Dashboard de Productos)
+
+```javascript
+// src/components/ProductsDashboard.jsx
+import { useState, useEffect } from 'react';
+import axios from 'axios';
+
+const ProductsDashboard = () => {
+  const [summary, setSummary] = useState(null);
+  const [topProducts, setTopProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+
+  const apiClient = axios.create({
+    baseURL: 'http://localhost:5000',
+    headers: {
+      'Authorization': `Bearer ${localStorage.getItem('token')}`
+    }
+  });
+
+  useEffect(() => {
+    loadData();
+  }, [selectedDate]);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      // Cargar resumen
+      const summaryRes = await apiClient.get('/api/products/summary', {
+        params: { date: selectedDate }
+      });
+      setSummary(summaryRes.data.summary);
+
+      // Cargar top 10 unificados
+      const topRes = await apiClient.get('/api/products/top-sellers', {
+        params: { date: selectedDate, limit: 10, unified: true }
+      });
+      setTopProducts(topRes.data.products);
+
+      // Cargar categorías
+      const catRes = await apiClient.get('/api/products/categories', {
+        params: { date: selectedDate }
+      });
+      setCategories(catRes.data.data.categorias);
+    } catch (error) {
+      console.error('Error cargando datos:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const downloadPDF = async () => {
+    try {
+      const response = await apiClient.get('/api/products/analysis/pdf', {
+        params: { date: selectedDate },
+        responseType: 'blob'
+      });
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `reporte_productos_${selectedDate}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error descargando PDF:', error);
+    }
+  };
+
+  if (loading) return <div>Cargando...</div>;
+
+  return (
+    <div className="products-dashboard">
+      <h1>Dashboard de Productos</h1>
+
+      {/* Selector de fecha */}
+      <input
+        type="date"
+        value={selectedDate}
+        onChange={(e) => setSelectedDate(e.target.value)}
+      />
+
+      <button onClick={downloadPDF}>Descargar PDF</button>
+
+      {/* Cards de resumen */}
+      <div className="summary-cards">
+        <div className="card">
+          <h3>Total Productos Vendidos</h3>
+          <p>{summary?.total_productos_vendidos_formatted}</p>
+        </div>
+        <div className="card">
+          <h3>Ingresos Totales</h3>
+          <p>{summary?.ingresos_totales_formatted}</p>
+        </div>
+        <div className="card">
+          <h3>Producto Más Vendido</h3>
+          <p>{summary?.producto_mas_vendido}</p>
+          <small>{summary?.unidades_mas_vendido_formatted} unidades</small>
+        </div>
+        <div className="card">
+          <h3>Número de Facturas</h3>
+          <p>{summary?.numero_facturas}</p>
+        </div>
+      </div>
+
+      {/* Top 10 productos */}
+      <div className="top-products">
+        <h2>Top 10 Productos</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Producto</th>
+              <th>Cantidad</th>
+              <th>Ingresos</th>
+              <th>Participación</th>
+            </tr>
+          </thead>
+          <tbody>
+            {topProducts.map(product => (
+              <tr key={product.ranking}>
+                <td>{product.ranking}</td>
+                <td>{product.nombre_base}</td>
+                <td>{product.cantidad_formatted}</td>
+                <td>{product.ingresos_formatted}</td>
+                <td>{product.porcentaje_participacion_formatted}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Categorías */}
+      <div className="categories">
+        <h2>Ventas por Categoría</h2>
+        {categories.map(cat => (
+          <div key={cat.categoria} className="category-item">
+            <h3>{cat.categoria}</h3>
+            <p>Cantidad: {cat.cantidad_formatted}</p>
+            <p>Ingresos: {cat.ingresos_formatted}</p>
+            <p>Participación: {cat.porcentaje_participacion_formatted}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+export default ProductsDashboard;
 ```
 
 ---

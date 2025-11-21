@@ -2,9 +2,9 @@
 
 Sistema backend para procesamiento de cierres de caja con integración a Alegra.
 
-## Versión 2.0 - Arquitectura Mejorada
+## Versión 2.1 - Arquitectura Mejorada + Análisis de Productos
 
-Esta versión incluye una refactorización completa del código con mejores prácticas, arquitectura modular, validación robusta y documentación completa.
+Esta versión incluye una refactorización completa del código con mejores prácticas, arquitectura modular, validación robusta y documentación completa. Ahora también incluye análisis completo de productos vendidos con reportes en JSON y PDF.
 
 ---
 
@@ -24,6 +24,10 @@ Esta versión incluye una refactorización completa del código con mejores prá
 - ✅ **Autenticación JWT** con tokens seguros
 - ✅ **Control de intentos de login** con bloqueo temporal
 - ✅ **Middlewares de autenticación** para proteger rutas
+- ✅ **Análisis de productos** con reportes en JSON y PDF
+- ✅ **Top productos más vendidos** con unificación de variantes
+- ✅ **Análisis por categorías** de productos
+- ✅ **Generación de PDFs** profesionales para reportes
 
 ---
 
@@ -38,12 +42,15 @@ cierre-caja-api/
 │   ├── routes/               # Endpoints de la API
 │   │   ├── cash_closing.py   # Endpoint principal
 │   │   ├── health.py         # Health check
-│   │   └── auth.py           # Autenticación
+│   │   ├── auth.py           # Autenticación
+│   │   └── products.py       # Análisis de productos
 │   ├── services/             # Lógica de negocio
 │   │   ├── alegra_client.py  # Cliente API Alegra
 │   │   ├── cash_calculator.py# Calculador de caja
 │   │   ├── knapsack_solver.py# Algoritmo DP
-│   │   └── jwt_service.py    # Servicio JWT
+│   │   ├── jwt_service.py    # Servicio JWT
+│   │   ├── product_analytics.py # Análisis de productos
+│   │   └── pdf_generator.py  # Generador de PDFs
 │   ├── middlewares/          # Middlewares
 │   │   └── auth.py           # Middleware de autenticación
 │   ├── models/               # Schemas y modelos
