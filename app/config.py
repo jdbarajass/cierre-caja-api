@@ -38,11 +38,15 @@ class Config:
         origin.strip()
         for origin in os.getenv(
             'ALLOWED_ORIGINS',
-            'https://jdbarajass.pythonanywhere.com,'
             'http://localhost:5173,'
             'http://localhost:5174,'
+            'http://localhost:5175,'
+            'http://localhost:5176,'
             'http://localhost:5000,'
-            'http://10.28.168.57:5000'
+            'http://10.28.168.57:5000,'
+            'http://10.28.168.57:5175,'
+            'https://jdbarajass.pythonanywhere.com,'
+            'https://cierre-caja-api.onrender.com'
         ).split(',')
         if origin.strip()  # Eliminar elementos vacíos
     ]
@@ -53,6 +57,22 @@ class Config:
     # Rate Limiting
     RATELIMIT_STORAGE_URL = os.getenv('RATELIMIT_STORAGE_URL', 'memory://')
     RATELIMIT_DEFAULT = os.getenv('RATELIMIT_DEFAULT', '200 per day;50 per hour')
+
+    # JWT Authentication
+    JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'dev-jwt-secret-CHANGE-IN-PRODUCTION-min-32-chars')
+    JWT_EXPIRATION_HOURS = int(os.getenv('JWT_EXPIRATION_HOURS', '8'))
+    JWT_ALGORITHM = 'HS256'
+
+    # Database
+    SQLALCHEMY_DATABASE_URI = os.getenv(
+        'DATABASE_URL',
+        'sqlite:///cierre_caja.db'
+    )
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+    # Security
+    MAX_LOGIN_ATTEMPTS = int(os.getenv('MAX_LOGIN_ATTEMPTS', '5'))
+    LOCKOUT_TIME_MINUTES = int(os.getenv('LOCKOUT_TIME_MINUTES', '15'))
 
     @classmethod
     def validate(cls):
