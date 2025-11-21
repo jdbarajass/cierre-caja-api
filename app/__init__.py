@@ -107,9 +107,11 @@ def create_app(config_class=Config):
     # Registrar blueprints
     from app.routes.cash_closing import bp as cash_bp
     from app.routes.health import bp as health_bp
+    from app.routes.auth import bp as auth_bp
 
     app.register_blueprint(cash_bp, url_prefix='/api')
     app.register_blueprint(health_bp)
+    app.register_blueprint(auth_bp, url_prefix='/auth')
 
     # Configurar manejadores de errores
     setup_error_handlers(app)
