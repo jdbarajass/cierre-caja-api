@@ -54,15 +54,19 @@ def get_products_analysis():
         # Determinar rango de fechas
         if date_param:
             # Fecha específica
+            # Validar formato
+            datetime.strptime(date_param, '%Y-%m-%d')
             target_date = datetime.strptime(date_param, '%Y-%m-%d').date()
             date_range = date_param
             invoices = alegra_client.get_invoices_by_date(target_date)
         elif start_date_param and end_date_param:
             # Rango de fechas
-            start_date = datetime.strptime(start_date_param, '%Y-%m-%d').date()
-            end_date = datetime.strptime(end_date_param, '%Y-%m-%d').date()
+            # Validar formato de fechas
+            datetime.strptime(start_date_param, '%Y-%m-%d')
+            datetime.strptime(end_date_param, '%Y-%m-%d')
             date_range = f"{start_date_param} al {end_date_param}"
-            invoices = alegra_client.get_all_invoices_in_range(start_date, end_date)
+            # Pasar strings directamente, no objetos date
+            invoices = alegra_client.get_all_invoices_in_range(start_date_param, end_date_param)
         else:
             # Día actual por defecto
             target_date = datetime.now().date()
@@ -148,16 +152,20 @@ def download_products_analysis_pdf():
 
         # Determinar rango de fechas
         if date_param:
+            # Validar formato
+            datetime.strptime(date_param, '%Y-%m-%d')
             target_date = datetime.strptime(date_param, '%Y-%m-%d').date()
             date_range = date_param
             filename_date = date_param
             invoices = alegra_client.get_invoices_by_date(target_date)
         elif start_date_param and end_date_param:
-            start_date = datetime.strptime(start_date_param, '%Y-%m-%d').date()
-            end_date = datetime.strptime(end_date_param, '%Y-%m-%d').date()
+            # Validar formato de fechas
+            datetime.strptime(start_date_param, '%Y-%m-%d')
+            datetime.strptime(end_date_param, '%Y-%m-%d')
             date_range = f"{start_date_param} al {end_date_param}"
             filename_date = f"{start_date_param}_al_{end_date_param}"
-            invoices = alegra_client.get_all_invoices_in_range(start_date, end_date)
+            # Pasar strings directamente, no objetos date
+            invoices = alegra_client.get_all_invoices_in_range(start_date_param, end_date_param)
         else:
             target_date = datetime.now().date()
             date_range = target_date.strftime('%Y-%m-%d')
@@ -245,14 +253,18 @@ def get_top_sellers():
 
         # Determinar rango de fechas
         if date_param:
+            # Validar formato
+            datetime.strptime(date_param, '%Y-%m-%d')
             target_date = datetime.strptime(date_param, '%Y-%m-%d').date()
             date_range = date_param
             invoices = alegra_client.get_invoices_by_date(target_date)
         elif start_date_param and end_date_param:
-            start_date = datetime.strptime(start_date_param, '%Y-%m-%d').date()
-            end_date = datetime.strptime(end_date_param, '%Y-%m-%d').date()
+            # Validar formato de fechas
+            datetime.strptime(start_date_param, '%Y-%m-%d')
+            datetime.strptime(end_date_param, '%Y-%m-%d')
             date_range = f"{start_date_param} al {end_date_param}"
-            invoices = alegra_client.get_all_invoices_in_range(start_date, end_date)
+            # Pasar strings directamente, no objetos date
+            invoices = alegra_client.get_all_invoices_in_range(start_date_param, end_date_param)
         else:
             target_date = datetime.now().date()
             date_range = target_date.strftime('%Y-%m-%d')
@@ -319,14 +331,18 @@ def get_categories_analysis():
 
         # Determinar rango de fechas
         if date_param:
+            # Validar formato
+            datetime.strptime(date_param, '%Y-%m-%d')
             target_date = datetime.strptime(date_param, '%Y-%m-%d').date()
             date_range = date_param
             invoices = alegra_client.get_invoices_by_date(target_date)
         elif start_date_param and end_date_param:
-            start_date = datetime.strptime(start_date_param, '%Y-%m-%d').date()
-            end_date = datetime.strptime(end_date_param, '%Y-%m-%d').date()
+            # Validar formato de fechas
+            datetime.strptime(start_date_param, '%Y-%m-%d')
+            datetime.strptime(end_date_param, '%Y-%m-%d')
             date_range = f"{start_date_param} al {end_date_param}"
-            invoices = alegra_client.get_all_invoices_in_range(start_date, end_date)
+            # Pasar strings directamente, no objetos date
+            invoices = alegra_client.get_all_invoices_in_range(start_date_param, end_date_param)
         else:
             target_date = datetime.now().date()
             date_range = target_date.strftime('%Y-%m-%d')
@@ -388,14 +404,18 @@ def get_products_summary():
 
         # Determinar rango de fechas
         if date_param:
+            # Validar formato
+            datetime.strptime(date_param, '%Y-%m-%d')
             target_date = datetime.strptime(date_param, '%Y-%m-%d').date()
             date_range = date_param
             invoices = alegra_client.get_invoices_by_date(target_date)
         elif start_date_param and end_date_param:
-            start_date = datetime.strptime(start_date_param, '%Y-%m-%d').date()
-            end_date = datetime.strptime(end_date_param, '%Y-%m-%d').date()
+            # Validar formato de fechas
+            datetime.strptime(start_date_param, '%Y-%m-%d')
+            datetime.strptime(end_date_param, '%Y-%m-%d')
             date_range = f"{start_date_param} al {end_date_param}"
-            invoices = alegra_client.get_all_invoices_in_range(start_date, end_date)
+            # Pasar strings directamente, no objetos date
+            invoices = alegra_client.get_all_invoices_in_range(start_date_param, end_date_param)
         else:
             target_date = datetime.now().date()
             date_range = target_date.strftime('%Y-%m-%d')

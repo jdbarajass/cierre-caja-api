@@ -2,9 +2,9 @@
 
 Sistema backend para procesamiento de cierres de caja con integración a Alegra.
 
-## Versión 2.1 - Arquitectura Mejorada + Análisis de Productos
+## Versión 2.1.1 - Arquitectura Mejorada + Análisis de Productos
 
-Esta versión incluye una refactorización completa del código con mejores prácticas, arquitectura modular, validación robusta y documentación completa. Ahora también incluye análisis completo de productos vendidos con reportes en JSON y PDF.
+Esta versión incluye una refactorización completa del código con mejores prácticas, arquitectura modular, validación robusta y documentación completa. Ahora también incluye análisis completo de productos vendidos con reportes en JSON y PDF, con soporte completo para rangos de fechas.
 
 ---
 
@@ -312,7 +312,103 @@ GET /api/monthly_sales?start_date=2025-11-01&end_date=2025-11-16
 }
 ```
 
-#### 3. GET /health
+#### 3. GET /api/products/analysis
+
+Análisis completo de productos vendidos en formato JSON.
+
+**Query Parameters (opcionales):**
+
+- `date` (string): Fecha específica en formato YYYY-MM-DD
+- `start_date` (string): Fecha de inicio para rango
+- `end_date` (string): Fecha de fin para rango
+
+**Ejemplos:**
+
+```
+GET /api/products/analysis?date=2025-11-21
+GET /api/products/analysis?start_date=2025-11-01&end_date=2025-11-30
+```
+
+**Response (200):**
+
+```json
+{
+  "success": true,
+  "date_range": "2025-11-01 al 2025-11-30",
+  "data": {
+    "resumen_ejecutivo": {
+      "total_productos_vendidos": 450,
+      "ingresos_totales": 15250000,
+      "producto_mas_vendido": "CAMISETA MUJER",
+      "unidades_mas_vendido": 85,
+      "numero_facturas": 120
+    },
+    "top_10_productos": [...],
+    "top_10_productos_unificados": [...],
+    "todos_productos_unificados": [...],
+    "listado_completo": [...],
+    "metadata": {
+      "fecha_generacion": "2025-11-21T14:30:45",
+      "numero_facturas_procesadas": 120,
+      "numero_items_procesados": 450
+    }
+  }
+}
+```
+
+#### 4. GET /api/products/analysis/pdf
+
+Descarga reporte de productos en formato PDF.
+
+**Query Parameters:** Igual que `/api/products/analysis`
+
+**Response:** Archivo PDF descargable
+
+#### 5. GET /api/products/summary
+
+Resumen ejecutivo de productos (métricas principales).
+
+**Query Parameters:** Igual que `/api/products/analysis`
+
+**Response (200):**
+
+```json
+{
+  "success": true,
+  "date_range": "2025-11-21",
+  "summary": {
+    "total_productos_vendidos": 42,
+    "ingresos_totales": 1569300.0,
+    "numero_facturas": 17,
+    "producto_mas_vendido": "MEDIAS 7900 / 10487900",
+    "unidades_mas_vendido": 3
+  }
+}
+```
+
+#### 6. GET /api/products/top-sellers
+
+Top productos más vendidos.
+
+**Query Parameters:**
+
+- `date`, `start_date`, `end_date`: Igual que otros endpoints
+- `limit` (int, opcional): Número de productos (default: 10)
+- `unified` (bool, opcional): Agrupar variantes (default: false)
+
+**Ejemplo:**
+
+```
+GET /api/products/top-sellers?start_date=2025-11-01&end_date=2025-11-30&limit=10&unified=true
+```
+
+#### 7. GET /api/products/categories
+
+Análisis de productos por categorías (CAMISETA, JEAN, BLUSA, etc.).
+
+**Query Parameters:** `date`, `start_date`, `end_date`
+
+#### 8. GET /health
 
 Health check para monitoreo.
 
@@ -541,6 +637,15 @@ Usa **Bounded Knapsack con Programación Dinámica** para calcular la base exact
 
 ## 📝 Changelog
 
+### v2.1.1 (2025-11-21)
+
+- 🐛 **Bug Fix**: Corregido error en endpoints de análisis de productos con rangos de fechas
+  - Arreglado problema donde los parámetros `start_date` y `end_date` causaban error `strptime() argument 1 must be str, not datetime.date`
+  - Afectaba a todos los endpoints de productos: `/api/products/analysis`, `/api/products/analysis/pdf`, `/api/products/top-sellers`, `/api/products/categories`, `/api/products/summary`
+  - Ahora los endpoints pasan strings directamente a `get_all_invoices_in_range()` en lugar de objetos `datetime.date`
+  - Validación mejorada de formato de fechas antes de procesamiento
+- ✅ Todos los endpoints de productos ahora funcionan correctamente con rangos de fechas
+
 ### v2.1.0 (2025-11-19)
 
 - ✨ Sistema de autenticación JWT completo
@@ -549,6 +654,9 @@ Usa **Bounded Knapsack con Programación Dinámica** para calcular la base exact
 - ✨ Control de intentos de login con bloqueo temporal
 - ✨ Scripts utilitarios para generar claves y crear admin
 - ✨ Modelo de usuario para base de datos
+- ✨ Análisis completo de productos vendidos con reportes JSON y PDF
+- ✨ Top productos más vendidos con unificación de variantes
+- ✨ Análisis por categorías de productos
 - 🔒 Mejoras de seguridad en configuración
 
 ### v2.0.0 (2025-11-14)
