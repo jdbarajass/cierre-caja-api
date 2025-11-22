@@ -391,6 +391,9 @@ class AlegraClient:
         """
         Obtiene TODAS las facturas en un rango de fechas manejando paginación automáticamente
 
+        OPTIMIZACIÓN: Si start_date == end_date (mismo día), usa get_invoices_by_date()
+        directamente con el parámetro date de Alegra, que es más eficiente.
+
         NOTA: Debido a la limitación de la API de Alegra con el parámetro date, este método
         obtiene facturas de forma paginada y filtra del lado del cliente. Se detiene cuando
         todas las facturas de una página son anteriores al rango solicitado (optimización).
@@ -404,6 +407,11 @@ class AlegraClient:
             Lista completa de facturas dentro del rango
         """
         from datetime import datetime
+
+        # OPTIMIZACIÓN: Si las fechas son iguales, usar consulta directa por fecha única
+        if start_date == end_date:
+            logger.info(f"Fechas iguales detectadas ({start_date}). Usando consulta optimizada con parámetro date")
+            return self.get_invoices_by_date(start_date)
 
         all_invoices = []
         page = 0
