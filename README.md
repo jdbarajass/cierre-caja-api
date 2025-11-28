@@ -104,12 +104,25 @@ source venv/bin/activate
 
 ### Paso 3: Instalar dependencias
 
+**Opción A - Instalación Manual:**
 ```bash
 pip install -r requirements.txt
 
 # Para desarrollo (incluye herramientas de testing)
 pip install -r requirements-dev.txt
 ```
+
+**Opción B - Script Automático (Recomendado):**
+```bash
+# Windows
+install_dependencies.bat
+
+# Linux/Mac
+chmod +x install_dependencies.sh
+./install_dependencies.sh
+```
+
+**Si tienes problemas:** Lee [TROUBLESHOOTING.md](TROUBLESHOOTING.md) para soluciones detalladas.
 
 ### Paso 4: Configurar variables de entorno
 
@@ -144,11 +157,17 @@ La API estará disponible en `http://localhost:5000` (desarrollo) o `http://loca
 venv\Scripts\activate
 
 # 2. Instalar dependencias
-pip install -r requirements.txt
+# Opción recomendada (script automático):
+install_dependencies.bat
+
+# O instalación manual:
+# pip install -r requirements.txt
 
 # 3. Ejecutar servidor
 python run.py
 ```
+
+**Problemas al instalar?** → Ver [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
 
 ### URLs de acceso local
 
@@ -599,6 +618,7 @@ Ver `.env.example` para todas las variables disponibles con ejemplos.
 
 ### 📖 Documentación Adicional
 
+- **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Guía completa de solución de problemas al instalar y ejecutar el servidor (RECOMENDADO LEER)
 - **[CONFIGURACION_VARIABLES_RENDER.md](CONFIGURACION_VARIABLES_RENDER.md)** - Guía completa para configurar variables de entorno en Render con explicaciones detalladas de cada variable
 - **[CAMBIOS_FRONTEND.md](CAMBIOS_FRONTEND.md)** - Documentación de cambios en la API que requieren actualización del frontend
 - **[generate_secret_key.py](generate_secret_key.py)** - Script para generar claves secretas seguras para Flask
@@ -636,6 +656,17 @@ Usa **Bounded Knapsack con Programación Dinámica** para calcular la base exact
 ---
 
 ## 📝 Changelog
+
+### v2.1.2 (2025-11-28)
+
+- 📚 **Documentación**: Agregada guía completa de solución de problemas
+  - Nuevo archivo [TROUBLESHOOTING.md](TROUBLESHOOTING.md) con soluciones a todos los errores comunes
+  - Nuevo archivo [QUICKSTART.md](QUICKSTART.md) para inicio rápido en menos de 5 minutos
+  - Scripts de instalación automática para Windows ([install_dependencies.bat](install_dependencies.bat)) y Linux/Mac ([install_dependencies.sh](install_dependencies.sh))
+- 🔧 **Compatibilidad**: Actualizado `requirements.txt` para compatibilidad con Python 3.14+
+  - Werkzeug actualizado a 3.0.0 (soluciona error `AttributeError: module 'ast' has no attribute 'Str'`)
+  - pydantic cambiado a `>=2.9.2` para usar binarios precompilados (evita necesidad de Rust)
+- 📖 **README**: Actualizado con referencias a nueva documentación y scripts de instalación
 
 ### v2.1.1 (2025-11-21)
 
