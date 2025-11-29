@@ -292,6 +292,9 @@ class ProductAnalytics:
         sales_by_category_size = self.get_sales_by_category_and_size()
         sales_by_department_size = self.get_sales_by_department_and_size()
 
+        # Análisis unificado departamento > categoría > tallas
+        unified_analysis = self.get_unified_department_category_size_analysis()
+
         return {
             'resumen_ejecutivo': summary,
             'top_10_productos': top_10,
@@ -301,6 +304,7 @@ class ProductAnalytics:
             'ventas_por_talla': sales_by_size,
             'ventas_por_categoria_talla': sales_by_category_size,
             'ventas_por_departamento_talla': sales_by_department_size,
+            'analisis_unificado': unified_analysis,
             'metadata': {
                 'fecha_generacion': datetime.now().isoformat(),
                 'numero_facturas_procesadas': len(self.invoices),
@@ -680,6 +684,244 @@ class ProductAnalytics:
                 'total_revenue_formatted': self.format_pesos(dept_data['total_revenue']),
                 'sizes': sizes_formatted,
                 'total_sizes_in_department': len(sizes_formatted)
+            })
+
+        return {
+            'departments': result,
+            'total_departments': len(result),
+            'total_units': total_units,
+            'total_units_formatted': self.format_number(total_units)
+        }
+
+    def _classify_product_category(self, nombre: str) -> str:
+        """
+        Clasifica un producto en una categoría basándose en su nombre
+
+        Args:
+            nombre: Nombre del producto
+
+        Returns:
+            Categoría del producto
+        """
+        nombre_upper = nombre.upper()
+
+        # Categorías de ROPA (prendas)
+        clothing_keywords = {
+            'CAMISETA': ['CAMISETA', 'CAMISA'],
+            'JEAN': ['JEAN', 'JEANS'],
+            'BLUSA': ['BLUSA'],
+            'POLO': ['POLO'],
+            'PANTALON': ['PANTALON'],
+            'SHORT': ['SHORT'],
+            'VESTIDO': ['VESTIDO'],
+            'FALDA': ['FALDA'],
+            'SUDADERA': ['SUDADERA'],
+            'JOGGER': ['JOGGER'],
+            'BUZO': ['BUZO'],
+            'CHAQUETA': ['CHAQUETA'],
+            'BODY': ['BODY'],
+            'ENTERIZO': ['ENTERIZO'],
+            'PIJAMA': ['PIJAMA'],
+            'LICRA': ['LICRA'],
+            'SUETER': ['SUETER', 'SWEATER'],
+        }
+
+        # Categorías de ACCESORIOS
+        accessory_keywords = {
+            'MEDIAS': ['MEDIAS', 'CALCETINES'],
+            'ZAPATOS': ['ZAPATO', 'TENIS', 'SANDALIA', 'BOTA'],
+            'CORREA': ['CORREA', 'CINTURON'],
+            'GORRA': ['GORRA', 'SOMBRERO', 'CACHUCHA'],
+            'BOLSO': ['BOLSO', 'CARTERA', 'MOCHILA'],
+            'BUFANDA': ['BUFANDA'],
+            'GUANTES': ['GUANTES'],
+            'RELOJ': ['RELOJ'],
+            'LENTES': ['LENTES', 'GAFAS'],
+            'ACCESORIOS': ['ACCESORIO'],
+        }
+
+        # Buscar en categorías de ropa
+        for category, keywords in clothing_keywords.items():
+            for keyword in keywords:
+                if keyword in nombre_upper:
+                    return category
+
+        # Buscar en categorías de accesorios
+        for category, keywords in accessory_keywords.items():
+            for keyword in keywords:
+                if keyword in nombre_upper:
+                    return category
+
+        # Si no encuentra nada, devolver OTROS
+        return 'OTROS'
+
+    def _classify_department(self, genero: str, nombre: str) -> str:
+        """
+        Clasifica el departamento/género del producto
+
+        Args:
+            genero: Género parseado del SKU
+            nombre: Nombre del producto para clasificación adicional
+
+        Returns:
+            Departamento clasificado
+        """
+        # Si ya viene clasificado del SKU
+        if genero and genero != 'UNKNOWN':
+            return genero
+
+        # Intentar clasificar por nombre
+        nombre_upper = nombre.upper()
+
+        if 'MUJER' in nombre_upper or 'DAMA' in nombre_upper:
+            return 'MUJER'
+        elif 'HOMBRE' in nombre_upper or 'CABALLERO' in nombre_upper:
+            return 'HOMBRE'
+        elif 'NIÑO' in nombre_upper and 'NIÑA' not in nombre_upper:
+            return 'NIÑO'
+        elif 'NIÑA' in nombre_upper:
+            return 'NIÑA'
+        elif 'INFANTIL' in nombre_upper or 'BEBE' in nombre_upper or 'BABY' in nombre_upper:
+            return 'NIÑO'
+
+        # Si no se puede clasificar
+        return 'UNKNOWN'
+
+    def get_unified_department_category_size_analysis(self, exclude_bolsa: bool = True, exclude_unknown: bool = False) -> Dict[str, Any]:
+        """
+        Análisis unificado por departamento > categoría > tallas
+
+        Organizado como:
+        - MUJER
+          - CAMISETA
+            - Tallas
+          - JEAN
+            - Tallas
+        - HOMBRE
+        - NIÑOS (combina NIÑO + NIÑA)
+        - ACCESORIOS
+
+        Args:
+            exclude_bolsa: Si True, excluye BOLSA PAPEL
+            exclude_unknown: Si True, excluye productos sin departamento clasificado
+
+        Returns:
+            Estructura jerárquica departamento > categoría > tallas
+        """
+        # Estructura: {departamento: {categoria: {talla: {units, revenue}}}}
+        hierarchy = {}
+        total_units = 0
+
+        # Definir accesorios
+        accessory_categories = ['MEDIAS', 'ZAPATOS', 'CORREA', 'GORRA', 'BOLSO',
+                                'BUFANDA', 'GUANTES', 'RELOJ', 'LENTES', 'ACCESORIOS']
+
+        for p in self.products_data:
+            # Filtros
+            if exclude_bolsa and 'BOLSA PAPEL' in p['nombre'].upper():
+                continue
+
+            talla = p.get('talla', 'UNKNOWN')
+            if exclude_unknown and talla == 'UNKNOWN':
+                continue
+
+            # Clasificar departamento y categoría
+            department = self._classify_department(p.get('genero', 'UNKNOWN'), p['nombre'])
+            category = self._classify_product_category(p['nombre'])
+
+            # Filtrar UNKNOWN si es necesario
+            if exclude_unknown and department == 'UNKNOWN':
+                continue
+
+            # Si es accesorio, reasignar departamento
+            if category in accessory_categories:
+                department = 'ACCESORIOS'
+            # Combinar NIÑO y NIÑA en NIÑOS
+            elif department in ['NIÑO', 'NIÑA']:
+                department = 'NIÑOS'
+
+            # Inicializar estructuras
+            if department not in hierarchy:
+                hierarchy[department] = {}
+
+            if category not in hierarchy[department]:
+                hierarchy[department][category] = {
+                    'sizes': {},
+                    'total_units': 0,
+                    'total_revenue': 0
+                }
+
+            if talla not in hierarchy[department][category]['sizes']:
+                hierarchy[department][category]['sizes'][talla] = {
+                    'size': talla,
+                    'units': 0,
+                    'revenue': 0
+                }
+
+            # Acumular datos
+            hierarchy[department][category]['sizes'][talla]['units'] += p['cantidad']
+            hierarchy[department][category]['sizes'][talla]['revenue'] += p['total']
+            hierarchy[department][category]['total_units'] += p['cantidad']
+            hierarchy[department][category]['total_revenue'] += p['total']
+            total_units += p['cantidad']
+
+        # Formatear resultado
+        result = []
+
+        # Orden de departamentos
+        department_order = ['MUJER', 'HOMBRE', 'NIÑOS', 'ACCESORIOS', 'UNKNOWN', 'OTROS']
+
+        for dept_name in department_order:
+            if dept_name not in hierarchy:
+                continue
+
+            dept_data = hierarchy[dept_name]
+            dept_total_units = sum(cat['total_units'] for cat in dept_data.values())
+            dept_total_revenue = sum(cat['total_revenue'] for cat in dept_data.values())
+
+            # Formatear categorías
+            categories = []
+            for cat_name, cat_data in sorted(dept_data.items(), key=lambda x: x[1]['total_units'], reverse=True):
+                # Formatear tallas
+                sizes = []
+                for size_data in sorted(cat_data['sizes'].values(), key=lambda x: x['units'], reverse=True):
+                    pct_in_cat = (size_data['units'] / cat_data['total_units'] * 100) if cat_data['total_units'] > 0 else 0
+                    sizes.append({
+                        'size': size_data['size'],
+                        'units': size_data['units'],
+                        'units_formatted': self.format_number(size_data['units']),
+                        'percentage_in_category': pct_in_cat,
+                        'percentage_in_category_formatted': self.format_percentage(pct_in_cat),
+                        'revenue': size_data['revenue'],
+                        'revenue_formatted': self.format_pesos(size_data['revenue'])
+                    })
+
+                pct_of_dept = (cat_data['total_units'] / dept_total_units * 100) if dept_total_units > 0 else 0
+
+                categories.append({
+                    'category': cat_name,
+                    'total_units': cat_data['total_units'],
+                    'total_units_formatted': self.format_number(cat_data['total_units']),
+                    'percentage_of_department': pct_of_dept,
+                    'percentage_of_department_formatted': self.format_percentage(pct_of_dept),
+                    'total_revenue': cat_data['total_revenue'],
+                    'total_revenue_formatted': self.format_pesos(cat_data['total_revenue']),
+                    'sizes': sizes,
+                    'total_sizes': len(sizes)
+                })
+
+            pct_of_total = (dept_total_units / total_units * 100) if total_units > 0 else 0
+
+            result.append({
+                'department': dept_name,
+                'total_units': dept_total_units,
+                'total_units_formatted': self.format_number(dept_total_units),
+                'percentage_of_total': pct_of_total,
+                'percentage_of_total_formatted': self.format_percentage(pct_of_total),
+                'total_revenue': dept_total_revenue,
+                'total_revenue_formatted': self.format_pesos(dept_total_revenue),
+                'categories': categories,
+                'total_categories': len(categories)
             })
 
         return {

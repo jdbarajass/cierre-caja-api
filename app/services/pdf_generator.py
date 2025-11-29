@@ -72,58 +72,48 @@ class ProductReportPDFGenerator:
         # 2. Top 10 sin unificar
         elementos.extend(self._create_top_10_table(
             analytics_data['top_10_productos'],
-            '🏆 Top 10 productos más vendidos Sin unificar (Sin tener en cuenta BOLSA PAPEL)',
+            '🏆 Top 10 productos más vendidos (sin unificar)',
             colors.lightblue
         ))
 
         # 3. Top 10 unificados
         elementos.extend(self._create_top_10_unified_table(
             analytics_data['top_10_productos_unificados'],
-            '🏆 Top 10 productos unificados (Sin tener en cuenta BOLSA PAPEL)',
+            '🏆 Top 10 productos unificados',
             colors.lightcoral
         ))
 
-        # 4. Todos los productos unificados
-        elementos.extend(self._create_all_products_unified_table(
-            analytics_data['todos_productos_unificados'],
-            'Productos unificados por nombre (Sin tener en cuenta BOLSA PAPEL)',
-            colors.lightgreen
-        ))
-
-        # 5. Listado completo (puede ser muy largo, agregar PageBreak antes)
-        elementos.append(PageBreak())
-        elementos.extend(self._create_complete_listing_table(
-            analytics_data['listado_completo'],
-            'Listado completo de productos',
-            colors.grey
-        ))
-
-        # 6. Análisis por tallas (si está disponible)
+        # 4. Análisis global por tallas
         if 'ventas_por_talla' in analytics_data and analytics_data['ventas_por_talla']:
             elementos.append(PageBreak())
             elementos.extend(self._create_size_analysis_table(
                 analytics_data['ventas_por_talla'],
-                '📏 Análisis de Ventas por Talla',
+                '📏 Análisis Global de Ventas por Talla',
                 colors.lightyellow
             ))
 
-        # 7. Análisis por categoría y talla (si está disponible)
-        if 'ventas_por_categoria_talla' in analytics_data and analytics_data['ventas_por_categoria_talla']:
+        # 5. Análisis Unificado: Departamento > Categoría > Tallas
+        if 'analisis_unificado' in analytics_data and analytics_data['analisis_unificado']:
             elementos.append(PageBreak())
-            elementos.extend(self._create_category_size_analysis_table(
-                analytics_data['ventas_por_categoria_talla'],
-                '🏷️ Análisis de Ventas por Categoría y Talla',
-                colors.lightcyan
+            elementos.extend(self._create_unified_department_category_analysis(
+                analytics_data['analisis_unificado']
             ))
 
-        # 8. Análisis por departamento y talla (si está disponible)
-        if 'ventas_por_departamento_talla' in analytics_data and analytics_data['ventas_por_departamento_talla']:
-            elementos.append(PageBreak())
-            elementos.extend(self._create_department_size_analysis_table(
-                analytics_data['ventas_por_departamento_talla'],
-                '👔 Análisis de Ventas por Departamento y Talla',
-                colors.lightpink
-            ))
+        # 6. Todos los productos unificados
+        elementos.append(PageBreak())
+        elementos.extend(self._create_all_products_unified_table(
+            analytics_data['todos_productos_unificados'],
+            'Todos los Productos Unificados',
+            colors.lightgreen
+        ))
+
+        # 7. Listado completo (al final)
+        elementos.append(PageBreak())
+        elementos.extend(self._create_complete_listing_table(
+            analytics_data['listado_completo'],
+            'Listado Completo de Productos',
+            colors.grey
+        ))
 
         # Construir PDF
         doc.build(elementos)
@@ -554,6 +544,130 @@ class ProductReportPDFGenerator:
             elementos.append(Spacer(1, 15))
 
         elementos.append(Spacer(1, 10))
+        return elementos
+
+    def _create_unified_department_category_analysis(self, unified_data: Dict) -> List:
+        """
+        Crea sección unificada de Departamento > Categoría > Tallas
+
+        Organizado como:
+        - MUJER
+          - CAMISETA (tallas)
+          - JEAN (tallas)
+        - HOMBRE
+        - NIÑOS
+        - ACCESORIOS
+        """
+        elementos = []
+
+        # Título principal de la sección
+        elementos.append(Paragraph(
+            '👔 Análisis por Departamento, Categoría y Talla',
+            self.h1_style
+        ))
+        elementos.append(Spacer(1, 15))
+
+        departments = unified_data.get('departments', [])
+
+        if not departments:
+            elementos.append(Paragraph(
+                '<i>No hay datos disponibles para este análisis.</i>',
+                self.normal_style
+            ))
+            return elementos
+
+        # Mapeo de emojis para departamentos
+        dept_emojis = {
+            'MUJER': '👗',
+            'HOMBRE': '👔',
+            'NIÑOS': '🧒',
+            'ACCESORIOS': '👜',
+            'UNKNOWN': '❓',
+            'OTROS': '📦'
+        }
+
+        for dept in departments:
+            dept_name = dept['department']
+            emoji = dept_emojis.get(dept_name, '📦')
+
+            # Título del departamento
+            elementos.append(Paragraph(
+                f'<b>{emoji} {dept_name}</b>',
+                self.h1_style
+            ))
+            elementos.append(Paragraph(
+                f'Total: {dept["total_units_formatted"]} unidades | '
+                f'{dept["total_revenue_formatted"]} | '
+                f'{dept["percentage_of_total_formatted"]} del total',
+                self.normal_style
+            ))
+            elementos.append(Spacer(1, 10))
+
+            categories = dept.get('categories', [])
+
+            for category in categories:
+                cat_name = category['category']
+
+                # Subtítulo de categoría
+                elementos.append(Paragraph(
+                    f'<b>{cat_name}</b> '
+                    f'({category["total_units_formatted"]} unidades, '
+                    f'{category["percentage_of_department_formatted"]} del departamento)',
+                    self.h2_style
+                ))
+
+                # Tabla de tallas para esta categoría
+                sizes = category.get('sizes', [])
+
+                if sizes:
+                    # Header
+                    data = [['Talla', 'Unidades', 'Ingresos', '% en Categoría']]
+
+                    # Datos de tallas
+                    for size in sizes:
+                        data.append([
+                            size['size'],
+                            size['units_formatted'],
+                            size['revenue_formatted'],
+                            size['percentage_in_category_formatted']
+                        ])
+
+                    # Totales
+                    total_units = sum(s['units'] for s in sizes)
+                    total_revenue = sum(s['revenue'] for s in sizes)
+
+                    data.append([
+                        'TOTAL',
+                        ProductReportPDFGenerator._format_number(total_units),
+                        ProductReportPDFGenerator._format_pesos(total_revenue),
+                        '100.00%'
+                    ])
+
+                    # Crear tabla
+                    tabla = Table(data, hAlign='LEFT', colWidths=[1*inch, 1.5*inch, 2*inch, 1.5*inch])
+                    tabla.setStyle(TableStyle([
+                        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                        ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+                        ('BACKGROUND', (0, -1), (-1, -1), colors.whitesmoke),
+                        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+                        ('FONTSIZE', (0, 0), (-1, -1), 8),
+                    ]))
+
+                    elementos.append(tabla)
+                    elementos.append(Spacer(1, 10))
+                else:
+                    elementos.append(Paragraph(
+                        '<i>No hay datos de tallas para esta categoría.</i>',
+                        self.normal_style
+                    ))
+                    elementos.append(Spacer(1, 10))
+
+            # Espacio entre departamentos
+            elementos.append(Spacer(1, 20))
+
         return elementos
 
     @staticmethod
