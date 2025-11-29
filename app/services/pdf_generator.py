@@ -560,6 +560,10 @@ class ProductReportPDFGenerator:
         """
         elementos = []
 
+        # Validar que unified_data es un diccionario
+        if not isinstance(unified_data, dict):
+            return elementos
+
         # Título principal de la sección
         elementos.append(Paragraph(
             '👔 Análisis por Departamento, Categoría y Talla',
@@ -568,6 +572,10 @@ class ProductReportPDFGenerator:
         elementos.append(Spacer(1, 15))
 
         departments = unified_data.get('departments', [])
+
+        # Validar que departments es una lista
+        if not isinstance(departments, list):
+            return elementos
 
         if not departments:
             elementos.append(Paragraph(
@@ -587,7 +595,11 @@ class ProductReportPDFGenerator:
         }
 
         for dept in departments:
-            dept_name = dept['department']
+            # Validar que dept es un diccionario
+            if not isinstance(dept, dict):
+                continue
+
+            dept_name = dept.get('department', 'UNKNOWN')
             emoji = dept_emojis.get(dept_name, '📦')
 
             # Título del departamento
@@ -596,28 +608,40 @@ class ProductReportPDFGenerator:
                 self.h1_style
             ))
             elementos.append(Paragraph(
-                f'Total: {dept["total_units_formatted"]} unidades | '
-                f'{dept["total_revenue_formatted"]} | '
-                f'{dept["percentage_of_total_formatted"]} del total',
+                f'Total: {dept.get("total_units_formatted", "0")} unidades | '
+                f'{dept.get("total_revenue_formatted", "$ 0")} | '
+                f'{dept.get("percentage_of_total_formatted", "0%")} del total',
                 self.normal_style
             ))
             elementos.append(Spacer(1, 10))
 
             categories = dept.get('categories', [])
 
+            # Validar que categories es una lista
+            if not isinstance(categories, list):
+                continue
+
             for category in categories:
-                cat_name = category['category']
+                # Validar que category es un diccionario
+                if not isinstance(category, dict):
+                    continue
+
+                cat_name = category.get('category', 'UNKNOWN')
 
                 # Subtítulo de categoría
                 elementos.append(Paragraph(
                     f'<b>{cat_name}</b> '
-                    f'({category["total_units_formatted"]} unidades, '
-                    f'{category["percentage_of_department_formatted"]} del departamento)',
+                    f'({category.get("total_units_formatted", "0")} unidades, '
+                    f'{category.get("percentage_of_department_formatted", "0%")} del departamento)',
                     self.h2_style
                 ))
 
                 # Tabla de tallas para esta categoría
                 sizes = category.get('sizes', [])
+
+                # Validar que sizes es una lista
+                if not isinstance(sizes, list):
+                    continue
 
                 if sizes:
                     # Header
@@ -625,16 +649,20 @@ class ProductReportPDFGenerator:
 
                     # Datos de tallas
                     for size in sizes:
+                        # Validar que size es un diccionario
+                        if not isinstance(size, dict):
+                            continue
+
                         data.append([
-                            size['size'],
-                            size['units_formatted'],
-                            size['revenue_formatted'],
-                            size['percentage_in_category_formatted']
+                            size.get('size', 'N/A'),
+                            size.get('units_formatted', '0'),
+                            size.get('revenue_formatted', '$ 0'),
+                            size.get('percentage_in_category_formatted', '0%')
                         ])
 
                     # Totales
-                    total_units = sum(s['units'] for s in sizes)
-                    total_revenue = sum(s['revenue'] for s in sizes)
+                    total_units = sum(s.get('units', 0) for s in sizes if isinstance(s, dict))
+                    total_revenue = sum(s.get('revenue', 0) for s in sizes if isinstance(s, dict))
 
                     data.append([
                         'TOTAL',
