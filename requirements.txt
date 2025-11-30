@@ -27,10 +27,6 @@ pydantic>=2.9.2
 # Environment Variables
 python-dotenv==1.0.0
 
-# Excel Support
-openpyxl==3.1.2
-xlrd==2.0.1
-
 # Timezone support
 tzdata==2023.3
 pytz==2023.3
@@ -40,7 +36,6 @@ python-dateutil==2.8.2
 PyJWT==2.8.0
 bcrypt==4.1.2
 Flask-SQLAlchemy==3.1.1
-email-validator==2.1.0
 
 # PDF Generation
 reportlab==4.0.7

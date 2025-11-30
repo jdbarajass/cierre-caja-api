@@ -2,7 +2,6 @@
 Servicio de análisis de productos
 Procesa datos de facturas de Alegra para generar análisis de productos vendidos
 """
-import unicodedata
 from typing import Dict, List, Any, Tuple
 from datetime import datetime
 import logging

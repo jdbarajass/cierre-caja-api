@@ -3,9 +3,9 @@ Servicio de análisis avanzado de ventas
 Incluye análisis de horas pico, top clientes, top vendedoras,
 retención, tendencias y cross-selling
 """
-from typing import Dict, List, Tuple
-from datetime import datetime, timedelta
-from collections import defaultdict, Counter
+from typing import Dict, List
+from datetime import datetime
+from collections import defaultdict
 import logging
 
 from app.utils.formatters import format_cop
