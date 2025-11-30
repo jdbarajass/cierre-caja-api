@@ -21,7 +21,7 @@ echo ""
 
 # Paso 1: Instalar dependencias base
 echo "[2/5] Instalando dependencias base..."
-pip install Flask==2.2.5 flask-cors==4.0.0 Flask-Limiter==3.5.0 flasgger==0.9.7.1 python-dotenv==1.0.0 tzdata==2023.3 pytz==2023.3 python-dateutil==2.8.2 PyJWT==2.8.0 bcrypt==4.1.2 Flask-SQLAlchemy==3.1.1 email-validator==2.1.0 reportlab==4.0.7 requests==2.31.0 gunicorn==20.1.0 openpyxl==3.1.2 xlrd==2.0.1
+pip install Flask==2.2.5 flask-cors==4.0.0 Flask-Limiter==3.5.0 flasgger==0.9.7.1 python-dotenv==1.0.0 tzdata==2023.3 pytz==2023.3 python-dateutil==2.8.2 PyJWT==2.8.0 bcrypt==4.1.2 Flask-SQLAlchemy==3.1.1 reportlab==4.0.7 requests==2.31.0 gunicorn==20.1.0
 if [ $? -ne 0 ]; then
     echo "ERROR: Falló la instalación de dependencias base"
     exit 1
