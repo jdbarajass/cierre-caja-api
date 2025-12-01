@@ -7,6 +7,7 @@ import logging
 from app.middlewares.auth import token_required
 from app.services.alegra_client import AlegraClient
 from app.services.inventory_analytics import InventoryAnalytics
+from app.services.inventory_file_processor import InventoryFileProcessor
 from app.config import Config
 from app.exceptions import AlegraConnectionError, AlegraAuthError
 
@@ -513,4 +514,124 @@ def get_abc_analysis():
         return jsonify({
             'success': False,
             'error': str(e)
+        }), 500
+
+
+@bp.route('/api/inventory/upload-file', methods=['POST'])
+@token_required
+def upload_inventory_file():
+    """
+    Procesa un archivo de inventario (CSV o Excel) y retorna análisis completo
+
+    Este endpoint recibe un archivo de inventario exportado desde Alegra
+    (u otra fuente) y realiza un análisis completo organizado por departamentos.
+
+    Request:
+        - Content-Type: multipart/form-data
+        - file: Archivo CSV o Excel (.csv, .xlsx, .xls)
+
+    Formatos soportados:
+        - CSV separado por coma (,)
+        - CSV separado por punto y coma (;)
+        - Excel (.xlsx, .xls)
+
+    Returns:
+        JSON con análisis completo del inventario:
+        {
+            'success': bool,
+            'resumen_general': {
+                'total_items': int,
+                'valor_total_costo': float,
+                'valor_total_precio': float,
+                'margen_total': float,
+                'margen_porcentaje': float,
+                'total_categorias': int
+            },
+            'por_departamento': {
+                'hombre': {
+                    'cantidad': int,
+                    'valor_costo': float,
+                    'valor_precio': float,
+                    'margen_total': float,
+                    'margen_porcentaje': float,
+                    'precio_promedio': float,
+                    'costo_promedio': float,
+                    'porcentaje_inventario': float,
+                    'items': [...]  # Muestra de 10 items
+                },
+                'mujer': {...},
+                'nino': {...},
+                'nina': {...},
+                'accesorios': {...},
+                'otros': {...}
+            },
+            'top_categorias': [
+                {'categoria': str, 'cantidad': int},
+                ...
+            ],
+            'departamentos_ordenados': [
+                {'nombre': str, 'cantidad': int, 'valor': float},
+                ...
+            ]
+        }
+
+    Example:
+        POST /api/inventory/upload-file
+        Content-Type: multipart/form-data
+
+        FormData:
+            file: [archivo.csv o archivo.xlsx]
+
+    Error Responses:
+        400: No se envió archivo o formato no soportado
+        500: Error procesando el archivo
+    """
+    try:
+        # Validar que se envió un archivo
+        if 'file' not in request.files:
+            return jsonify({
+                'success': False,
+                'error': 'No se envió ningún archivo'
+            }), 400
+
+        file = request.files['file']
+
+        # Validar que el archivo tiene nombre
+        if file.filename == '':
+            return jsonify({
+                'success': False,
+                'error': 'El archivo no tiene nombre'
+            }), 400
+
+        # Validar formato del archivo
+        allowed_extensions = {'.csv', '.xlsx', '.xls'}
+        file_ext = '.' + file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
+
+        if file_ext not in allowed_extensions:
+            return jsonify({
+                'success': False,
+                'error': f'Formato de archivo no soportado. Use: {", ".join(allowed_extensions)}'
+            }), 400
+
+        logger.info(f"Procesando archivo de inventario: {file.filename}")
+
+        # Procesar el archivo
+        result = InventoryFileProcessor.process_file(file.stream, file.filename)
+
+        logger.info(f"Archivo procesado exitosamente. Total items: {result.get('resumen_general', {}).get('total_items', 0)}")
+
+        return jsonify(result), 200
+
+    except ValueError as e:
+        logger.error(f"Error de validación al procesar archivo: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 400
+    except Exception as e:
+        logger.exception("Error inesperado al procesar archivo de inventario")
+        return jsonify({
+            'success': False,
+            'error': 'Error interno al procesar el archivo',
+            'details': str(e)
         }), 500

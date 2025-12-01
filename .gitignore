@@ -107,3 +107,10 @@ dmypy.json
 *.bak
 *.backup
 *_backup.py
+
+# Data files (exported inventories, etc.)
+*.csv
+*.xlsx
+*.xls
+test_*.py
+test_*.json
