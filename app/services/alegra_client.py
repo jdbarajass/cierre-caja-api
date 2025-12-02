@@ -245,7 +245,7 @@ class AlegraClient:
         end_date: str,
         start: int = 0,
         limit: int = 30
-    ) -> List[Dict]:
+    ) -> tuple:
         """
         Obtiene facturas de Alegra en un rango de fechas con paginación
 
@@ -260,7 +260,10 @@ class AlegraClient:
             limit: Cantidad de registros por página (default: 30)
 
         Returns:
-            Lista de facturas filtradas por el rango de fechas
+            Tupla (filtered_data, has_older_invoices, total_fetched) donde:
+            - filtered_data: Lista de facturas filtradas por el rango de fechas
+            - has_older_invoices: bool indicando si hay facturas más antiguas que el rango
+            - total_fetched: int con el total de facturas obtenidas de la API (antes de filtrar)
 
         Raises:
             AlegraTimeoutError: Si la petición excede el timeout
@@ -321,6 +324,7 @@ class AlegraClient:
             # Filtrar facturas por rango de fechas del lado del cliente
             from datetime import datetime
             filtered_data = []
+            has_older_invoices = False
             start_dt = datetime.strptime(start_date, '%Y-%m-%d').date()
             end_dt = datetime.strptime(end_date, '%Y-%m-%d').date()
 
@@ -341,12 +345,15 @@ class AlegraClient:
                     # Filtrar por rango
                     if start_dt <= invoice_date <= end_dt:
                         filtered_data.append(invoice)
+                    # Detectar si hay facturas más antiguas que el rango (para continuar paginando)
+                    elif invoice_date < start_dt:
+                        has_older_invoices = True
                 except ValueError as e:
                     logger.warning(f"Error parseando fecha de factura {invoice.get('id')}: {invoice_date_str} - {e}")
                     continue
 
-            logger.info(f"✓ {len(data)} facturas obtenidas, {len(filtered_data)} dentro del rango {start_date} - {end_date}")
-            return filtered_data
+            logger.info(f"✓ {len(data)} facturas obtenidas, {len(filtered_data)} dentro del rango {start_date} - {end_date}, hay facturas más antiguas: {has_older_invoices}")
+            return filtered_data, has_older_invoices, len(data)
 
         except requests.exceptions.Timeout:
             logger.error(f"Timeout al conectar con Alegra (>{self.timeout}s)")
@@ -389,62 +396,62 @@ class AlegraClient:
         max_pages: int = 100
     ) -> List[Dict]:
         """
-        Obtiene TODAS las facturas en un rango de fechas manejando paginación automáticamente
+        Obtiene TODAS las facturas en un rango de fechas consultando día por día
 
-        OPTIMIZACIÓN: Si start_date == end_date (mismo día), usa get_invoices_by_date()
-        directamente con el parámetro date de Alegra, que es más eficiente.
-
-        NOTA: Debido a la limitación de la API de Alegra con el parámetro date, este método
-        obtiene facturas de forma paginada y filtra del lado del cliente. Se detiene cuando
-        todas las facturas de una página son anteriores al rango solicitado (optimización).
+        Este método itera desde start_date hasta end_date, consultando las facturas
+        de cada día individualmente usando el parámetro 'date' de Alegra (que funciona
+        correctamente para fechas únicas). Luego combina todos los resultados.
 
         Args:
             start_date: Fecha de inicio en formato YYYY-MM-DD
             end_date: Fecha de fin en formato YYYY-MM-DD
-            max_pages: Máximo número de páginas a consultar (default: 100)
+            max_pages: No usado, mantenido por compatibilidad
 
         Returns:
             Lista completa de facturas dentro del rango
         """
-        from datetime import datetime
+        from datetime import datetime, timedelta
 
-        # OPTIMIZACIÓN: Si las fechas son iguales, usar consulta directa por fecha única
+        # Si las fechas son iguales, usar consulta directa por fecha única
         if start_date == end_date:
             logger.info(f"Fechas iguales detectadas ({start_date}). Usando consulta optimizada con parámetro date")
             return self.get_invoices_by_date(start_date)
 
-        all_invoices = []
-        page = 0
-        limit = 30
+        # Parsear fechas
         start_dt = datetime.strptime(start_date, '%Y-%m-%d').date()
+        end_dt = datetime.strptime(end_date, '%Y-%m-%d').date()
 
-        logger.info(f"Iniciando consulta completa de facturas desde {start_date} hasta {end_date}")
+        logger.info(f"[DEBUG] Iniciando consulta día por día desde {start_date} hasta {end_date}")
+        print(f"[DEBUG CONSOLE] Iniciando consulta día por día desde {start_date} hasta {end_date}")
 
-        while page < max_pages:
-            start_offset = page * limit
-            # get_invoices_by_date_range ya filtra del lado del cliente
-            invoices = self.get_invoices_by_date_range(start_date, end_date, start_offset, limit)
+        all_invoices = []
+        current_date = start_dt
+        days_processed = 0
 
-            # Si no hay facturas en esta página, terminamos
-            if not invoices:
-                logger.info(f"No hay más facturas en el rango. Total páginas consultadas: {page + 1}")
-                break
+        # Iterar día por día
+        while current_date <= end_dt:
+            date_str = current_date.strftime('%Y-%m-%d')
+            logger.info(f"Consultando facturas para el día: {date_str}")
 
-            all_invoices.extend(invoices)
-            logger.info(f"Página {page + 1}: {len(invoices)} facturas en el rango. Total acumulado: {len(all_invoices)}")
+            try:
+                # Consultar facturas del día usando el método que funciona correctamente
+                daily_invoices = self.get_invoices_by_date(date_str)
 
-            # Si obtuvimos menos registros filtrados que el límite, probablemente ya pasamos el rango
-            # Continuamos paginando hasta que una página completa esté fuera del rango
-            if len(invoices) < limit:
-                logger.info(f"Página con menos de {limit} facturas en el rango, continuamos verificando...")
-                # Verificar si deberíamos seguir paginando
-                # (podría haber más facturas en el rango en páginas siguientes)
-                page += 1
-                continue
+                if daily_invoices:
+                    all_invoices.extend(daily_invoices)
+                    logger.info(f"[OK] {len(daily_invoices)} facturas obtenidas para {date_str}. Total acumulado: {len(all_invoices)}")
+                else:
+                    logger.info(f"  0 facturas para {date_str}")
 
-            page += 1
+            except Exception as e:
+                logger.error(f"Error consultando facturas para {date_str}: {str(e)}")
+                # Continuar con el siguiente día en caso de error
 
-        logger.info(f"✓ Consulta completa finalizada. Total de facturas en el rango: {len(all_invoices)}")
+            # Avanzar al siguiente día
+            current_date += timedelta(days=1)
+            days_processed += 1
+
+        logger.info(f"[OK] Consulta completa finalizada. {days_processed} días procesados. Total de facturas: {len(all_invoices)}")
         return all_invoices
 
     def get_monthly_sales_summary(
