@@ -15,7 +15,8 @@ from app.utils.formatters import (
     safe_number,
     normalize_payment_method,
     get_payment_method_label,
-    format_cop
+    format_cop,
+    filter_voided_invoices
 )
 
 logger = logging.getLogger(__name__)
@@ -150,16 +151,45 @@ class AlegraClient:
                 details={'error': str(e)}
             )
 
-    def process_invoices(self, invoices: List[Dict]) -> Dict[str, float]:
+    def process_invoices(self, invoices: List[Dict]) -> Dict:
         """
         Procesa facturas y suma totales por método de pago
+        IMPORTANTE: Filtra facturas anuladas antes de calcular totales
 
         Args:
             invoices: Lista de facturas de Alegra
 
         Returns:
-            Dict con totales por método: {"credit-card": X, "debit-card": Y, ...}
+            Dict con:
+                - totals: Dict con totales por método: {"credit-card": X, "debit-card": Y, ...}
+                - voided_info: Información sobre facturas anuladas
+                - processed_count: Cantidad de facturas procesadas (activas)
+                - total_invoices: Total de facturas recibidas
         """
+        # Filtrar facturas anuladas ANTES de procesar
+        filter_result = filter_voided_invoices(invoices)
+        active_invoices = filter_result['active_invoices']
+        voided_info = {
+            'voided_count': filter_result['voided_count'],
+            'total_voided_amount': filter_result['total_voided_amount'],
+            'total_voided_amount_formatted': filter_result['total_voided_amount_formatted'],
+            'voided_summary': filter_result['voided_summary']
+        }
+
+        # Log información sobre facturas anuladas
+        if filter_result['voided_count'] > 0:
+            logger.info(
+                f"⚠️  Se encontraron {filter_result['voided_count']} facturas anuladas "
+                f"(Total: {filter_result['total_voided_amount_formatted']}) - "
+                f"Estas NO se incluyen en los cálculos de venta"
+            )
+            for voided in filter_result['voided_summary']:
+                logger.info(
+                    f"   - Factura anulada #{voided['number']} (ID: {voided['id']}): "
+                    f"{voided['total_formatted']} - Cliente: {voided['client_name']}"
+                )
+
+        # Calcular totales SOLO con facturas activas
         totals = {
             "credit-card": 0,
             "debit-card": 0,
@@ -167,7 +197,7 @@ class AlegraClient:
             "cash": 0
         }
 
-        for inv in invoices:
+        for inv in active_invoices:
             payments = inv.get("payments", []) or []
 
             for p in payments:
@@ -182,14 +212,23 @@ class AlegraClient:
                     logger.debug(f"Método de pago desconocido '{pm_raw}' mapeado a 'cash'")
                     totals["cash"] += amount
 
-        logger.debug(f"Totales procesados: {totals}")
-        return totals
+        logger.debug(f"Totales procesados (facturas activas): {totals}")
+
+        return {
+            'totals': totals,
+            'voided_info': voided_info,
+            'processed_count': len(active_invoices),
+            'total_invoices': len(invoices)
+        }
 
     def build_alegra_response(
         self,
         totals: Dict[str, float],
         date: str,
-        username: str
+        username: str,
+        voided_info: Dict = None,
+        processed_count: int = 0,
+        total_invoices: int = 0
     ) -> Dict:
         """
         Construye la estructura de respuesta de Alegra
@@ -198,6 +237,9 @@ class AlegraClient:
             totals: Diccionario con totales por método de pago
             date: Fecha consultada
             username: Usuario utilizado
+            voided_info: Información sobre facturas anuladas
+            processed_count: Cantidad de facturas procesadas (activas)
+            total_invoices: Total de facturas recibidas
 
         Returns:
             Dict con estructura completa de respuesta
@@ -218,26 +260,46 @@ class AlegraClient:
             "formatted": format_cop(total_sum)
         }
 
-        return {
+        response = {
             "date_requested": date,
             "username_used": username,
             "results": result,
-            "total_sale": result_total
+            "total_sale": result_total,
+            "invoices_summary": {
+                "total_invoices": total_invoices,
+                "active_invoices": processed_count,
+                "voided_invoices": voided_info.get('voided_count', 0) if voided_info else 0
+            }
         }
+
+        # Agregar información de facturas anuladas si existen
+        if voided_info and voided_info.get('voided_count', 0) > 0:
+            response['voided_invoices'] = voided_info
+
+        return response
 
     def get_sales_summary(self, date: str) -> Dict:
         """
         Obtiene el resumen completo de ventas para una fecha
+        IMPORTANTE: Filtra facturas anuladas automáticamente
 
         Args:
             date: Fecha en formato YYYY-MM-DD
 
         Returns:
-            Diccionario con resumen completo de ventas
+            Diccionario con resumen completo de ventas (sin facturas anuladas)
         """
         invoices = self.get_invoices_by_date(date)
-        totals = self.process_invoices(invoices)
-        return self.build_alegra_response(totals, date, self.username)
+        process_result = self.process_invoices(invoices)
+
+        return self.build_alegra_response(
+            totals=process_result['totals'],
+            date=date,
+            username=self.username,
+            voided_info=process_result['voided_info'],
+            processed_count=process_result['processed_count'],
+            total_invoices=process_result['total_invoices']
+        )
 
     def get_invoices_by_date_range(
         self,
@@ -461,18 +523,38 @@ class AlegraClient:
     ) -> Dict:
         """
         Obtiene el resumen de ventas para un rango de fechas (mes)
+        IMPORTANTE: Filtra facturas anuladas automáticamente
 
         Args:
             start_date: Fecha de inicio en formato YYYY-MM-DD
             end_date: Fecha de fin en formato YYYY-MM-DD
 
         Returns:
-            Dict con resumen de ventas mensuales
+            Dict con resumen de ventas mensuales (sin facturas anuladas)
         """
         # Obtener todas las facturas del mes
-        invoices = self.get_all_invoices_in_range(start_date, end_date)
+        all_invoices = self.get_all_invoices_in_range(start_date, end_date)
 
-        # Calcular totales
+        # Filtrar facturas anuladas ANTES de calcular totales
+        filter_result = filter_voided_invoices(all_invoices)
+        invoices = filter_result['active_invoices']
+        voided_info = {
+            'voided_count': filter_result['voided_count'],
+            'total_voided_amount': filter_result['total_voided_amount'],
+            'total_voided_amount_formatted': filter_result['total_voided_amount_formatted'],
+            'voided_summary': filter_result['voided_summary']
+        }
+
+        # Log información sobre facturas anuladas
+        if filter_result['voided_count'] > 0:
+            logger.info(
+                f"⚠️  Periodo {start_date} - {end_date}: "
+                f"Se encontraron {filter_result['voided_count']} facturas anuladas "
+                f"(Total: {filter_result['total_voided_amount_formatted']}) - "
+                f"Estas NO se incluyen en los cálculos de venta"
+            )
+
+        # Calcular totales SOLO con facturas activas
         total_vendido = 0
         cantidad_facturas = len(invoices)
 
@@ -510,7 +592,7 @@ class AlegraClient:
                 "formatted": format_cop(total)
             }
 
-        return {
+        response = {
             "date_range": {
                 "start": start_date,
                 "end": end_date
@@ -522,8 +604,19 @@ class AlegraClient:
             },
             "cantidad_facturas": cantidad_facturas,
             "payment_methods": payment_details,
-            "username_used": self.username
+            "username_used": self.username,
+            "invoices_summary": {
+                "total_invoices": len(all_invoices),
+                "active_invoices": len(invoices),
+                "voided_invoices": filter_result['voided_count']
+            }
         }
+
+        # Agregar información de facturas anuladas si existen
+        if voided_info['voided_count'] > 0:
+            response['voided_invoices'] = voided_info
+
+        return response
 
     def get_active_items(self) -> List[Dict]:
         """

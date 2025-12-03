@@ -58,6 +58,38 @@ def get_invoices_from_params():
     return invoices, date_range
 
 
+def add_voided_info_to_response(response_dict: dict, analytics: SalesAnalytics) -> dict:
+    """
+    Agrega información sobre facturas anuladas a la respuesta si existen
+
+    Args:
+        response_dict: Diccionario de respuesta a modificar
+        analytics: Instancia de SalesAnalytics con información de facturas
+
+    Returns:
+        dict: Respuesta modificada con información de facturas anuladas
+    """
+    voided_info = analytics.get_voided_invoices_info()
+
+    # Agregar resumen de facturas
+    response_dict['invoices_summary'] = {
+        'total_invoices_received': voided_info['total_invoices_received'],
+        'active_invoices_analyzed': voided_info['active_invoices_analyzed'],
+        'voided_invoices_excluded': voided_info['voided_count']
+    }
+
+    # Si hay facturas anuladas, agregar detalles
+    if voided_info['voided_count'] > 0:
+        response_dict['voided_invoices'] = {
+            'count': voided_info['voided_count'],
+            'total_amount': voided_info['total_voided_amount'],
+            'total_amount_formatted': voided_info['total_voided_amount_formatted'],
+            'details': voided_info['voided_summary']
+        }
+
+    return response_dict
+
+
 # ============================================================
 # 1. ENDPOINT: HORAS PICO DE VENTAS
 # ============================================================
@@ -101,12 +133,17 @@ def get_peak_hours():
         analytics = SalesAnalytics(invoices)
         peak_hours_data = analytics.get_peak_hours_analysis()
 
-        return jsonify({
+        response = {
             'success': True,
             'date_range': date_range,
             'server_timestamp': get_colombia_timestamp(),
             'data': peak_hours_data
-        }), 200
+        }
+
+        # Agregar información de facturas anuladas
+        response = add_voided_info_to_response(response, analytics)
+
+        return jsonify(response), 200
 
     except ValueError as e:
         return jsonify({
@@ -180,12 +217,17 @@ def get_top_customers():
         analytics = SalesAnalytics(invoices)
         top_customers_data = analytics.get_top_customers_analysis(limit=limit)
 
-        return jsonify({
+        response = {
             'success': True,
             'date_range': date_range,
             'server_timestamp': get_colombia_timestamp(),
             'data': top_customers_data
-        }), 200
+        }
+
+        # Agregar información de facturas anuladas
+        response = add_voided_info_to_response(response, analytics)
+
+        return jsonify(response), 200
 
     except ValueError as e:
         return jsonify({
@@ -259,12 +301,17 @@ def get_top_sellers():
         analytics = SalesAnalytics(invoices)
         top_sellers_data = analytics.get_top_sellers_analysis(limit=limit)
 
-        return jsonify({
+        response = {
             'success': True,
             'date_range': date_range,
             'server_timestamp': get_colombia_timestamp(),
             'data': top_sellers_data
-        }), 200
+        }
+
+        # Agregar información de facturas anuladas
+        response = add_voided_info_to_response(response, analytics)
+
+        return jsonify(response), 200
 
     except ValueError as e:
         return jsonify({
@@ -334,12 +381,17 @@ def get_customer_retention():
         analytics = SalesAnalytics(invoices)
         retention_data = analytics.get_customer_retention_analysis()
 
-        return jsonify({
+        response = {
             'success': True,
             'date_range': date_range,
             'server_timestamp': get_colombia_timestamp(),
             'data': retention_data
-        }), 200
+        }
+
+        # Agregar información de facturas anuladas
+        response = add_voided_info_to_response(response, analytics)
+
+        return jsonify(response), 200
 
     except ValueError as e:
         return jsonify({
@@ -409,12 +461,17 @@ def get_sales_trends():
         analytics = SalesAnalytics(invoices)
         trends_data = analytics.get_sales_trends_analysis()
 
-        return jsonify({
+        response = {
             'success': True,
             'date_range': date_range,
             'server_timestamp': get_colombia_timestamp(),
             'data': trends_data
-        }), 200
+        }
+
+        # Agregar información de facturas anuladas
+        response = add_voided_info_to_response(response, analytics)
+
+        return jsonify(response), 200
 
     except ValueError as e:
         return jsonify({
@@ -486,12 +543,17 @@ def get_cross_selling():
         analytics = SalesAnalytics(invoices)
         cross_selling_data = analytics.get_cross_selling_analysis(min_support=min_support)
 
-        return jsonify({
+        response = {
             'success': True,
             'date_range': date_range,
             'server_timestamp': get_colombia_timestamp(),
             'data': cross_selling_data
-        }), 200
+        }
+
+        # Agregar información de facturas anuladas
+        response = add_voided_info_to_response(response, analytics)
+
+        return jsonify(response), 200
 
     except ValueError as e:
         return jsonify({
@@ -564,12 +626,17 @@ def get_analytics_dashboard():
             'cross_selling': analytics.get_cross_selling_analysis(min_support=2)
         }
 
-        return jsonify({
+        response = {
             'success': True,
             'date_range': date_range,
             'server_timestamp': get_colombia_timestamp(),
             'data': dashboard_data
-        }), 200
+        }
+
+        # Agregar información de facturas anuladas
+        response = add_voided_info_to_response(response, analytics)
+
+        return jsonify(response), 200
 
     except ValueError as e:
         return jsonify({

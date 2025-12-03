@@ -27,6 +27,6 @@ if __name__ == "__main__":
         host=host,
         port=port,
         debug=debug,
-        use_reloader=False,
+        use_reloader=debug,  # Auto-reload solo en modo debug
         threaded=True
     )

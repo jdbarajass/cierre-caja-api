@@ -8,7 +8,7 @@ from datetime import datetime
 from collections import defaultdict
 import logging
 
-from app.utils.formatters import format_cop
+from app.utils.formatters import format_cop, filter_voided_invoices
 
 logger = logging.getLogger(__name__)
 
@@ -19,13 +19,54 @@ class SalesAnalytics:
     def __init__(self, invoices: List[Dict]):
         """
         Inicializa el servicio de analytics con facturas
+        IMPORTANTE: Filtra automáticamente las facturas anuladas antes de analizar
 
         Args:
-            invoices: Lista de facturas de Alegra
+            invoices: Lista de facturas de Alegra (pueden incluir facturas anuladas)
         """
-        self.invoices = invoices
-        self.total_invoices = len(invoices)
-        logger.info(f"SalesAnalytics inicializado con {self.total_invoices} facturas")
+        # Filtrar facturas anuladas ANTES de cualquier análisis
+        filter_result = filter_voided_invoices(invoices)
+        self.invoices = filter_result['active_invoices']
+        self.total_invoices = len(self.invoices)
+        self.voided_info = {
+            'voided_count': filter_result['voided_count'],
+            'total_voided_amount': filter_result['total_voided_amount'],
+            'total_voided_amount_formatted': filter_result['total_voided_amount_formatted'],
+            'voided_summary': filter_result['voided_summary']
+        }
+        self.total_invoices_received = len(invoices)
+
+        logger.info(
+            f"SalesAnalytics inicializado con {self.total_invoices} facturas activas "
+            f"({filter_result['voided_count']} anuladas excluidas del análisis)"
+        )
+
+        # Log de facturas anuladas si existen
+        if filter_result['voided_count'] > 0:
+            logger.info(
+                f"⚠️  Se excluyeron {filter_result['voided_count']} facturas anuladas "
+                f"(Total: {filter_result['total_voided_amount_formatted']}) del análisis"
+            )
+
+    # ============================================================
+    # INFORMACIÓN DE FACTURAS ANULADAS
+    # ============================================================
+
+    def get_voided_invoices_info(self) -> Dict:
+        """
+        Obtiene información sobre las facturas anuladas que fueron excluidas del análisis
+
+        Returns:
+            Dict con información de facturas anuladas
+        """
+        return {
+            'voided_count': self.voided_info['voided_count'],
+            'total_voided_amount': self.voided_info['total_voided_amount'],
+            'total_voided_amount_formatted': self.voided_info['total_voided_amount_formatted'],
+            'voided_summary': self.voided_info['voided_summary'],
+            'total_invoices_received': self.total_invoices_received,
+            'active_invoices_analyzed': self.total_invoices
+        }
 
     # ============================================================
     # 1. ANÁLISIS DE HORAS PICO DE VENTAS
