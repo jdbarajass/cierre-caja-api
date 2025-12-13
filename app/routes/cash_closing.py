@@ -10,6 +10,7 @@ from app.models.requests import CashClosingRequest
 from app.services.cash_calculator import (
     CashCalculator,
     procesar_excedentes,
+    procesar_desfases,
     calcular_totales_metodos_pago,
     validar_cierre,
     preparar_respuesta_completa
@@ -202,6 +203,10 @@ def sum_payments():
     metodos_pago = data.get("metodos_pago", {})
     metodos_pago_calculados = calcular_totales_metodos_pago(metodos_pago)
 
+    # Procesar desfases (nueva funcionalidad)
+    desfases_list = data.get("desfases", [])
+    desfases_procesados = procesar_desfases(desfases_list)
+
     # Procesar cierre de caja (usando excedente_efectivo para cálculos de venta)
     # IMPORTANTE: Se usa excedente_efectivo porque la venta en efectivo de Alegra
     # debe compararse solo con el excedente en efectivo, no con otros excedentes
@@ -284,13 +289,14 @@ def sum_payments():
 
         return jsonify(partial_response), 502
 
-    # Validar el cierre comparando Alegra con lo registrado (incluye validación de efectivo)
+    # Validar el cierre comparando Alegra con lo registrado (incluye validación de efectivo y desfases)
     validacion_cierre = validar_cierre(
         alegra_result,
         metodos_pago_calculados,
         cash_result,
         excedentes_procesados,
-        cash_request.gastos_operativos
+        cash_request.gastos_operativos,
+        desfases_procesados
     )
 
     # Construir respuesta completa exitosa usando la nueva función
@@ -303,7 +309,8 @@ def sum_payments():
         payload_original=data,
         datetime_info=datetime_info,
         tz_used=tz_used,
-        username=Config.ALEGRA_USER
+        username=Config.ALEGRA_USER,
+        desfases_procesados=desfases_procesados
     )
 
     # Log resumen del cierre

@@ -59,6 +59,11 @@ class CashClosingRequest(BaseModel):
         description="Nota descriptiva de los préstamos"
     )
 
+    desfases: List[Dict] = Field(
+        default_factory=list,
+        description="Lista de desfases en caja [{tipo, valor, nota}]"
+    )
+
     metodos_pago: Dict = Field(
         default_factory=dict,
         description="Métodos de pago registrados manualmente"

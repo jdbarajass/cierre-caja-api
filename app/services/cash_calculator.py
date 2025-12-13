@@ -423,6 +423,67 @@ def procesar_excedentes(excedentes_list):
     return totales
 
 
+def procesar_desfases(desfases_list):
+    """
+    Recibe una lista de desfases y retorna los totales por tipo.
+
+    Args:
+        desfases_list: [
+            { "tipo": "faltante_caja", "valor": 5000, "nota": "Faltante por error en vueltas - Responsable: María" },
+            { "tipo": "sobrante_caja", "valor": 2000, "nota": "Sobrante de caja - Verificar origen" }
+        ]
+
+    Returns:
+        {
+            "total_desfase": -3000,  # Negativo si falta, positivo si sobra
+            "faltante_caja": 5000,
+            "sobrante_caja": 2000,
+            "desfases_detalle": [
+                { "tipo": "Faltante en caja", "valor": 5000, "nota": "..." },
+                { "tipo": "Sobrante en caja", "valor": 2000, "nota": "..." }
+            ]
+        }
+    """
+    totales = {
+        "total_desfase": 0,
+        "faltante_caja": 0,
+        "sobrante_caja": 0,
+        "desfases_detalle": []
+    }
+
+    for desfase in desfases_list:
+        valor = int(desfase.get("valor", 0))
+        tipo = desfase.get("tipo", "")
+        nota = desfase.get("nota", "")
+
+        if valor > 0:
+            if tipo == "faltante_caja":
+                totales["faltante_caja"] += valor
+                totales["total_desfase"] -= valor  # Faltante es negativo
+                totales["desfases_detalle"].append({
+                    "tipo": "Faltante en caja",
+                    "valor": valor,
+                    "nota": nota
+                })
+            elif tipo == "sobrante_caja":
+                totales["sobrante_caja"] += valor
+                totales["total_desfase"] += valor  # Sobrante es positivo
+                totales["desfases_detalle"].append({
+                    "tipo": "Sobrante en caja",
+                    "valor": valor,
+                    "nota": nota
+                })
+
+    logger.info(
+        f"Desfases procesados: total={format_cop(totales['total_desfase'])}, "
+        f"faltante={format_cop(totales['faltante_caja'])}, "
+        f"sobrante={format_cop(totales['sobrante_caja'])}"
+    )
+
+    return totales
+
+
+
 def calcular_totales_metodos_pago(metodos_pago):
     """
     Calcula los totales de transferencias y datafono.
@@ -484,7 +545,7 @@ def calcular_totales_metodos_pago(metodos_pago):
     }
 
 
-def validar_cierre(datos_alegra, metodos_pago_calculados, cash_result=None, excedentes_procesados=None, gastos_operativos=0):
+def validar_cierre(datos_alegra, metodos_pago_calculados, cash_result=None, excedentes_procesados=None, gastos_operativos=0, desfases_procesados=None):
     """
     Valida si el cierre es exitoso comparando Alegra con lo registrado.
 
@@ -498,6 +559,7 @@ def validar_cierre(datos_alegra, metodos_pago_calculados, cash_result=None, exce
     3. Datafono: Alegra "debit-card + credit-card" debe coincidir con (Tarjeta débito + Tarjeta crédito)
        - Alegra NO incluye Addi en las tarjetas
     4. Datafono Real: Se calcula como (Tarjetas + Addi) para mostrar lo que realmente llega al datafono
+    5. DESFASES: Si después de todos los ajustes hay diferencia >= 100 en efectivo, se sugiere registrar desfase
 
     Args:
         datos_alegra: Los datos obtenidos de Alegra
@@ -505,6 +567,7 @@ def validar_cierre(datos_alegra, metodos_pago_calculados, cash_result=None, exce
         cash_result: Resultado del cálculo de caja (opcional, para validación de efectivo)
         excedentes_procesados: Excedentes procesados (opcional, para validación de efectivo)
         gastos_operativos: Gastos operativos del día (default: 0)
+        desfases_procesados: Desfases procesados (opcional, para ajuste de efectivo)
 
     Returns:
         {
@@ -516,7 +579,13 @@ def validar_cierre(datos_alegra, metodos_pago_calculados, cash_result=None, exce
                 "datafono": {...},
                 "datafono_real": {...}
             },
-            "mensaje_validacion": "..."
+            "mensaje_validacion": "...",
+            "desfase_sugerido": {
+                "detectado": True/False,
+                "tipo": "faltante_caja" | "sobrante_caja" | None,
+                "valor": int | None,
+                "mensaje": "..."
+            }
         }
     """
     # Obtener totales de Alegra
@@ -549,15 +618,81 @@ def validar_cierre(datos_alegra, metodos_pago_calculados, cash_result=None, exce
         # y el total a consignar ya tiene los gastos descontados
         suma_efectivo_ajustada = efectivo_alegra + excedente_efectivo - gastos_operativos
 
-        # Calcular diferencia
-        diff_efectivo = abs(suma_efectivo_ajustada - efectivo_para_consignar)
+        # Calcular diferencia (sin valor absoluto primero para determinar si falta o sobra)
+        diff_efectivo_raw = suma_efectivo_ajustada - efectivo_para_consignar
+        diff_efectivo = abs(diff_efectivo_raw)
 
-        # Validación: diferencia debe ser menor a 100 pesos
-        efectivo_validado = diff_efectivo < 100
+        # NUEVA LÓGICA: Verificar si hay desfase registrado que explique la diferencia
+        desfase_explica_diferencia = False
+        if desfases_procesados:
+            total_desfase = desfases_procesados.get("total_desfase", 0)
+            
+            # El desfase explica la diferencia si:
+            # - La diferencia es negativa (falta) y hay un faltante registrado que coincide
+            # - La diferencia es positiva (sobra) y hay un sobrante registrado que coincide
+            # total_desfase es negativo para faltantes, positivo para sobrantes
+            # diff_efectivo_raw es negativo si falta, positivo si sobra
+            
+            # Verificar si el desfase coincide con la diferencia (con tolerancia de 100 pesos)
+            if abs(total_desfase - diff_efectivo_raw) < 100:
+                desfase_explica_diferencia = True
+                logger.info(
+                    f"Desfase registrado ({format_cop(total_desfase)}) explica la diferencia "
+                    f"({format_cop(diff_efectivo_raw)})"
+                )
+
+        # Validación: diferencia debe ser menor a 100 pesos O estar explicada por un desfase
+        efectivo_validado = diff_efectivo < 100 or desfase_explica_diferencia
+
+    # DETECCIÓN DE DESFASES
+    # Si no se validó el efectivo y no se enviaron desfases, sugerir registrar uno
+    desfase_sugerido = {
+        "detectado": False,
+        "tipo": None,
+        "valor": None,
+        "valor_formatted": None,
+        "mensaje": ""
+    }
+
+    if not efectivo_validado and diff_efectivo >= 100:
+        # Solo sugerir desfase si no se enviaron desfases o si los enviados no coinciden
+        if not desfases_procesados or desfases_procesados.get("total_desfase", 0) == 0:
+            # Determinar tipo de desfase
+            if diff_efectivo_raw < 0:
+                # Falta dinero en caja
+                tipo_desfase = "faltante_caja"
+                valor_desfase = abs(diff_efectivo_raw)
+                mensaje_desfase = (
+                    f"⚠️ DESFASE DETECTADO: Falta {format_cop(valor_desfase)} en caja. "
+                    f"Por favor, registra este faltante en el campo 'desfases' con una nota "
+                    f"explicativa indicando el responsable o la causa del faltante."
+                )
+            else:
+                # Sobra dinero en caja
+                tipo_desfase = "sobrante_caja"
+                valor_desfase = abs(diff_efectivo_raw)
+                mensaje_desfase = (
+                    f"⚠️ DESFASE DETECTADO: Sobra {format_cop(valor_desfase)} en caja. "
+                    f"Por favor, registra este sobrante en el campo 'desfases' con una nota "
+                    f"explicativa indicando el origen del sobrante."
+                )
+
+            desfase_sugerido = {
+                "detectado": True,
+                "tipo": tipo_desfase,
+                "valor": int(valor_desfase),
+                "valor_formatted": format_cop(valor_desfase),
+                "mensaje": mensaje_desfase
+            }
+
+            logger.warning(
+                f"Desfase detectado: {tipo_desfase} de {format_cop(valor_desfase)}"
+            )
 
     # Calcular diferencias de otros métodos
     diff_transferencia = abs(transferencia_alegra - transferencias_registradas)
     diff_datafono = abs(datafono_alegra - solo_tarjetas)
+
 
     # VALIDACIÓN GLOBAL: El cierre es exitoso si:
     # 1. Efectivo validado correctamente (CRÍTICO)
@@ -706,7 +841,8 @@ def validar_cierre(datos_alegra, metodos_pago_calculados, cash_result=None, exce
         "validation_status": validation_status,
         "diferencias": diferencias,
         "mensaje_validacion": mensaje_validacion,
-        "mensajes_detallados": mensajes  # Lista de mensajes detallados para el frontend
+        "mensajes_detallados": mensajes,  # Lista de mensajes detallados para el frontend
+        "desfase_sugerido": desfase_sugerido  # Sugerencia de desfase si se detectó diferencia
     }
 
 
@@ -719,7 +855,8 @@ def preparar_respuesta_completa(
     payload_original,
     datetime_info,
     tz_used,
-    username
+    username,
+    desfases_procesados=None
 ):
     """
     Prepara la respuesta final incluyendo todos los datos necesarios.
@@ -734,6 +871,7 @@ def preparar_respuesta_completa(
         datetime_info: Información de fecha/hora
         tz_used: Zona horaria utilizada
         username: Usuario de Alegra
+        desfases_procesados: Desfases procesados (opcional)
 
     Returns:
         Dict con la respuesta completa
@@ -755,6 +893,7 @@ def preparar_respuesta_completa(
         "excedentes_detalle": excedentes_procesados["excedentes_detalle"],
         "gastos_operativos_nota": payload_original.get("gastos_operativos_nota", ""),
         "prestamos_nota": payload_original.get("prestamos_nota", ""),
+        "desfases_detalle": desfases_procesados["desfases_detalle"] if desfases_procesados else [],
         "metodos_pago_registrados": metodos_pago_calculados,
         "validation": validacion_cierre
     }
