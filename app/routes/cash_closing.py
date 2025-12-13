@@ -199,13 +199,14 @@ def sum_payments():
     total_excedente = excedentes_procesados["total_excedente"]
     excedente_efectivo = excedentes_procesados["excedente_efectivo"]
 
-    # Calcular totales de métodos de pago (nueva lógica del backend)
-    metodos_pago = data.get("metodos_pago", {})
-    metodos_pago_calculados = calcular_totales_metodos_pago(metodos_pago)
-
     # Procesar desfases (nueva funcionalidad)
     desfases_list = data.get("desfases", [])
     desfases_procesados = procesar_desfases(desfases_list)
+
+    # Calcular totales de métodos de pago (nueva lógica del backend)
+    # Pasar excedentes_procesados para mostrar totales con excedentes
+    metodos_pago = data.get("metodos_pago", {})
+    metodos_pago_calculados = calcular_totales_metodos_pago(metodos_pago, excedentes_procesados)
 
     # Procesar cierre de caja (usando excedente_efectivo para cálculos de venta)
     # IMPORTANTE: Se usa excedente_efectivo porque la venta en efectivo de Alegra
@@ -296,6 +297,7 @@ def sum_payments():
         cash_result,
         excedentes_procesados,
         cash_request.gastos_operativos,
+        cash_request.prestamos,
         desfases_procesados
     )
 

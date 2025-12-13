@@ -176,30 +176,29 @@ class CashCalculator:
         """
         Aplica ajustes al monto de consignación
 
-        NOTA IMPORTANTE:
-        - Los gastos operativos NO se restan aquí porque ya fueron sacados
-          físicamente del efectivo antes de contar
-        - Solo se restan los préstamos del monto a consignar
+        NOTA IMPORTANTE (Escenario A):
+        - Los gastos operativos ya fueron sacados FÍSICAMENTE del efectivo ANTES de contar
+        - Los préstamos ya fueron sacados FÍSICAMENTE del efectivo ANTES de contar
+        - Los desfases (faltantes/sobrantes) ya están reflejados en el efectivo contado
+        - Por lo tanto, NO se resta NADA aquí, el efectivo contado ya refleja todo
 
         Args:
             total_consignar_sin_ajustes: Total antes de ajustes
             excedente: Dinero excedente
             gastos_operativos: Gastos del día (solo para logging, no se resta)
-            prestamos: Préstamos realizados
+            prestamos: Préstamos realizados (solo para logging, no se resta)
 
         Returns:
             Monto final para consignar
         """
-        efectivo_para_consignar_final = (
-            total_consignar_sin_ajustes
-            - prestamos
-        )
+        # NO se restan gastos ni préstamos porque ya fueron sacados físicamente antes de contar
+        efectivo_para_consignar_final = total_consignar_sin_ajustes
 
         logger.info(
             f"Ajustes aplicados: "
             f"sin_ajustes={format_cop(total_consignar_sin_ajustes)}, "
-            f"gastos={format_cop(gastos_operativos)} (ya descontados físicamente), "
-            f"prestamos={format_cop(prestamos)}, "
+            f"gastos={format_cop(gastos_operativos)} (ya sacados físicamente antes de contar), "
+            f"prestamos={format_cop(prestamos)} (ya sacados físicamente antes de contar), "
             f"final={format_cop(efectivo_para_consignar_final)}"
         )
 
@@ -210,33 +209,36 @@ class CashCalculator:
         total_general: int,
         excedente: float,
         total_base: int,
-        gastos_operativos: float
+        gastos_operativos: float,
+        prestamos: float
     ) -> int:
         """
         Calcula la venta en efectivo para comparar con Alegra
 
-        NOTA IMPORTANTE:
-        - El total_general es el efectivo contado DESPUÉS de sacar gastos operativos
-        - Alegra reporta el efectivo vendido ANTES de sacar gastos operativos
-        - Por lo tanto, sumamos los gastos operativos al resultado para comparar con Alegra
+        NOTA IMPORTANTE (Escenario A):
+        - El total_general es el efectivo contado DESPUÉS de sacar gastos operativos y préstamos
+        - Alegra reporta el efectivo vendido ANTES de sacar gastos operativos y préstamos
+        - Por lo tanto, sumamos gastos y préstamos al resultado para obtener la venta original
 
-        Fórmula: TOTAL_GENERAL - EXCEDENTE - BASE + GASTOS_OPERATIVOS
+        Fórmula: TOTAL_GENERAL - EXCEDENTE - BASE + GASTOS_OPERATIVOS + PRESTAMOS
 
         Args:
-            total_general: Total de efectivo contado (ya con gastos descontados)
+            total_general: Total de efectivo contado (ya con gastos y préstamos sacados)
             excedente: Excedente del día (solo efectivo)
             total_base: Total de la base
             gastos_operativos: Gastos operativos que ya fueron sacados del efectivo
+            prestamos: Préstamos que ya fueron sacados del efectivo
 
         Returns:
             Venta en efectivo calculada (para comparar con Alegra)
         """
-        venta_efectivo = total_general - excedente - total_base + gastos_operativos
+        venta_efectivo = total_general - excedente - total_base + gastos_operativos + prestamos
 
         logger.info(
             f"Venta efectivo calculada para Alegra: {format_cop(venta_efectivo)} "
             f"(total={format_cop(total_general)} - excedente={format_cop(excedente)} - "
-            f"base={format_cop(total_base)} + gastos={format_cop(gastos_operativos)})"
+            f"base={format_cop(total_base)} + gastos={format_cop(gastos_operativos)} + "
+            f"prestamos={format_cop(prestamos)})"
         )
 
         return int(venta_efectivo)
@@ -296,7 +298,8 @@ class CashCalculator:
             total_general,
             excedente,
             base_info['total_base'],
-            gastos_operativos
+            gastos_operativos,
+            prestamos
         )
 
         # 5. Construir respuesta completa
@@ -484,7 +487,7 @@ def procesar_desfases(desfases_list):
 
 
 
-def calcular_totales_metodos_pago(metodos_pago):
+def calcular_totales_metodos_pago(metodos_pago, excedentes_procesados=None):
     """
     Calcula los totales de transferencias y datafono.
 
@@ -503,13 +506,15 @@ def calcular_totales_metodos_pago(metodos_pago):
             "tarjeta_debito": 464000,
             "tarjeta_credito": 0
         }
+        excedentes_procesados: (Opcional) Excedentes procesados para mostrar totales con excedentes
 
     Returns:
         {
             **metodos_pago,
             "total_transferencias_registradas": nequi + daviplata + qr + addi (para validar con Alegra transfer),
             "total_solo_tarjetas": debito + credito (para validar con Alegra debit-card + credit-card),
-            "total_datafono_real": debito + credito + addi (lo que realmente llega al datafono)
+            "total_datafono_real": debito + credito + addi (lo que realmente llega al datafono),
+            "total_datafono_con_excedente": tarjetas + addi + excedente_datafono (si hay excedentes)
         }
     """
     addi = int(metodos_pago.get("addi_datafono", 0))
@@ -528,6 +533,39 @@ def calcular_totales_metodos_pago(metodos_pago):
     # Total real que llega al datafono de Cristian (tarjetas + Addi)
     total_datafono_real = tarjeta_debito + tarjeta_credito + addi
 
+    # Preparar resultado base
+    resultado = {
+        **metodos_pago,
+        "total_transferencias_registradas": total_transferencias_registradas,
+        "total_transferencias_registradas_formatted": format_cop(total_transferencias_registradas),
+        "total_solo_tarjetas": total_solo_tarjetas,
+        "total_solo_tarjetas_formatted": format_cop(total_solo_tarjetas),
+        "total_datafono_real": total_datafono_real,
+        "total_datafono_real_formatted": format_cop(total_datafono_real)
+    }
+
+    # Si se proporcionan excedentes, agregar totales con excedentes
+    if excedentes_procesados:
+        excedente_datafono = excedentes_procesados.get("excedente_datafono", 0)
+        excedente_nequi = excedentes_procesados.get("excedente_nequi", 0)
+        excedente_daviplata = excedentes_procesados.get("excedente_daviplata", 0)
+        excedente_qr = excedentes_procesados.get("excedente_qr", 0)
+
+        # Total datafono incluyendo excedente
+        total_datafono_con_excedente = total_datafono_real + excedente_datafono
+
+        # Total transferencias incluyendo excedentes (nequi, daviplata, qr)
+        total_transferencias_con_excedente = total_transferencias_registradas + excedente_nequi + excedente_daviplata + excedente_qr
+
+        resultado.update({
+            "total_datafono_con_excedente": total_datafono_con_excedente,
+            "total_datafono_con_excedente_formatted": format_cop(total_datafono_con_excedente),
+            "total_transferencias_con_excedente": total_transferencias_con_excedente,
+            "total_transferencias_con_excedente_formatted": format_cop(total_transferencias_con_excedente),
+            "detalle_datafono": f"{format_cop(total_datafono_real)} + Excedente {format_cop(excedente_datafono)} = {format_cop(total_datafono_con_excedente)}",
+            "detalle_transferencias": f"{format_cop(total_transferencias_registradas)} + Excedentes {format_cop(excedente_nequi + excedente_daviplata + excedente_qr)} = {format_cop(total_transferencias_con_excedente)}"
+        })
+
     logger.info(
         f"Totales métodos de pago calculados: "
         f"transferencias_para_alegra={format_cop(total_transferencias_registradas)} "
@@ -537,23 +575,18 @@ def calcular_totales_metodos_pago(metodos_pago):
         f"datafono_real={format_cop(total_datafono_real)}"
     )
 
-    return {
-        **metodos_pago,
-        "total_transferencias_registradas": total_transferencias_registradas,
-        "total_solo_tarjetas": total_solo_tarjetas,
-        "total_datafono_real": total_datafono_real
-    }
+    return resultado
 
 
-def validar_cierre(datos_alegra, metodos_pago_calculados, cash_result=None, excedentes_procesados=None, gastos_operativos=0, desfases_procesados=None):
+def validar_cierre(datos_alegra, metodos_pago_calculados, cash_result=None, excedentes_procesados=None, gastos_operativos=0, prestamos=0, desfases_procesados=None):
     """
     Valida si el cierre es exitoso comparando Alegra con lo registrado.
 
-    LÓGICA DE VALIDACIÓN:
-    1. Efectivo: Alegra "cash" + Excedente efectivo - Gastos operativos debe coincidir con Total a consignar
+    LÓGICA DE VALIDACIÓN (Escenario A):
+    1. Efectivo: Alegra "cash" + Excedente efectivo - Gastos operativos - Préstamos + Desfases debe coincidir con Total a consignar
        - Esta es la validación principal del cierre
-       - Los gastos operativos se restan porque Alegra reporta efectivo ANTES de sacarlos
-       - El total a consignar ya tiene los gastos descontados (se sacaron físicamente antes de contar)
+       - Los gastos operativos, préstamos y desfases se restan/suman porque Alegra reporta efectivo ANTES de sacarlos
+       - El total a consignar ya tiene todo descontado (se sacaron físicamente antes de contar)
     2. Transferencias: Alegra "transfer" debe coincidir con (Nequi + Daviplata + QR + Addi)
        - Alegra registra Addi como transferencia aunque realmente va al datafono
     3. Datafono: Alegra "debit-card + credit-card" debe coincidir con (Tarjeta débito + Tarjeta crédito)
@@ -567,6 +600,7 @@ def validar_cierre(datos_alegra, metodos_pago_calculados, cash_result=None, exce
         cash_result: Resultado del cálculo de caja (opcional, para validación de efectivo)
         excedentes_procesados: Excedentes procesados (opcional, para validación de efectivo)
         gastos_operativos: Gastos operativos del día (default: 0)
+        prestamos: Préstamos realizados (default: 0)
         desfases_procesados: Desfases procesados (opcional, para ajuste de efectivo)
 
     Returns:
@@ -603,46 +637,36 @@ def validar_cierre(datos_alegra, metodos_pago_calculados, cash_result=None, exce
     datafono_real = metodos_pago_calculados.get("total_datafono_real", 0)  # Tarjetas + Addi
 
     # VALIDACIÓN DE EFECTIVO (Validación principal del cierre)
-    # Efectivo de Alegra + Excedente de efectivo - Gastos operativos = Total a consignar
+    # Efectivo de Alegra + Excedente de efectivo - Gastos operativos - Préstamos + Desfases = Total a consignar
     efectivo_validado = True
     diff_efectivo = 0
     excedente_efectivo = 0
     efectivo_para_consignar = 0
     suma_efectivo_ajustada = 0
+    total_desfase = 0
 
     if cash_result and excedentes_procesados:
         excedente_efectivo = excedentes_procesados.get("excedente_efectivo", 0)
         efectivo_para_consignar = cash_result.get("consignar", {}).get("efectivo_para_consignar_final", 0)
 
-        # IMPORTANTE: Restar gastos operativos porque Alegra reporta efectivo ANTES de sacarlos
-        # y el total a consignar ya tiene los gastos descontados
-        suma_efectivo_ajustada = efectivo_alegra + excedente_efectivo - gastos_operativos
+        # Obtener desfases si existen
+        if desfases_procesados:
+            total_desfase = desfases_procesados.get("total_desfase", 0)
+
+        # IMPORTANTE (Escenario A): Restar gastos operativos y préstamos porque Alegra reporta efectivo ANTES de sacarlos
+        # y el total a consignar ya tiene los gastos y préstamos descontados (se sacaron físicamente antes de contar)
+        # DESFASES: Sumar total_desfase para ajustar por faltantes/sobrantes registrados
+        # - Si hay un faltante de $2,300, total_desfase = -2300 (se suma, lo que es restar el valor absoluto)
+        # - Si hay un sobrante de $2,300, total_desfase = +2300 (se suma el valor positivo)
+        suma_efectivo_ajustada = efectivo_alegra + excedente_efectivo - gastos_operativos - prestamos + total_desfase
 
         # Calcular diferencia (sin valor absoluto primero para determinar si falta o sobra)
         diff_efectivo_raw = suma_efectivo_ajustada - efectivo_para_consignar
         diff_efectivo = abs(diff_efectivo_raw)
 
-        # NUEVA LÓGICA: Verificar si hay desfase registrado que explique la diferencia
-        desfase_explica_diferencia = False
-        if desfases_procesados:
-            total_desfase = desfases_procesados.get("total_desfase", 0)
-            
-            # El desfase explica la diferencia si:
-            # - La diferencia es negativa (falta) y hay un faltante registrado que coincide
-            # - La diferencia es positiva (sobra) y hay un sobrante registrado que coincide
-            # total_desfase es negativo para faltantes, positivo para sobrantes
-            # diff_efectivo_raw es negativo si falta, positivo si sobra
-            
-            # Verificar si el desfase coincide con la diferencia (con tolerancia de 100 pesos)
-            if abs(total_desfase - diff_efectivo_raw) < 100:
-                desfase_explica_diferencia = True
-                logger.info(
-                    f"Desfase registrado ({format_cop(total_desfase)}) explica la diferencia "
-                    f"({format_cop(diff_efectivo_raw)})"
-                )
-
-        # Validación: diferencia debe ser menor a 100 pesos O estar explicada por un desfase
-        efectivo_validado = diff_efectivo < 100 or desfase_explica_diferencia
+        # Validación: diferencia debe ser menor a 100 pesos
+        # Si se registraron desfases correctamente, diff_efectivo debería ser < 100
+        efectivo_validado = diff_efectivo < 100
 
     # DETECCIÓN DE DESFASES
     # Si no se validó el efectivo y no se enviaron desfases, sugerir registrar uno
@@ -718,6 +742,10 @@ def validar_cierre(datos_alegra, metodos_pago_calculados, cash_result=None, exce
             "excedente_efectivo_formatted": format_cop(excedente_efectivo),
             "gastos_operativos": gastos_operativos,
             "gastos_operativos_formatted": format_cop(gastos_operativos),
+            "prestamos": prestamos,
+            "prestamos_formatted": format_cop(prestamos),
+            "total_desfase": total_desfase,
+            "total_desfase_formatted": format_cop(total_desfase),
             "suma_efectivo_ajustada": suma_efectivo_ajustada,
             "suma_efectivo_ajustada_formatted": format_cop(suma_efectivo_ajustada),
             "efectivo_para_consignar": efectivo_para_consignar,
@@ -725,7 +753,7 @@ def validar_cierre(datos_alegra, metodos_pago_calculados, cash_result=None, exce
             "diferencia": diff_efectivo,
             "diferencia_formatted": format_cop(diff_efectivo),
             "es_valido": efectivo_validado,
-            "detalle": "Efectivo Alegra + Excedente efectivo - Gastos operativos = Total a consignar"
+            "detalle": "Efectivo Alegra + Excedente efectivo - Gastos operativos - Préstamos + Desfases = Total a consignar"
         },
         "transferencias": {
             "alegra": transferencia_alegra,
@@ -757,11 +785,21 @@ def validar_cierre(datos_alegra, metodos_pago_calculados, cash_result=None, exce
     # CRÍTICO: Validación de efectivo
     if not diferencias["efectivo"]["es_valido"]:
         medios_con_diferencia.append("EFECTIVO")
+        # Construir mensaje con préstamos y desfases
+        prestamos_str = ""
+        if prestamos > 0:
+            prestamos_str = f" - Préstamos: {diferencias['efectivo']['prestamos_formatted']}"
+
+        desfase_str = ""
+        if total_desfase != 0:
+            desfase_str = f" + Desfases: {diferencias['efectivo']['total_desfase_formatted']}"
+
         mensajes.append(
             f"⚠️ EFECTIVO NO COINCIDE: Diferencia de {diferencias['efectivo']['diferencia_formatted']} "
             f"(Alegra: {diferencias['efectivo']['efectivo_alegra_formatted']} + "
             f"Excedente: {diferencias['efectivo']['excedente_efectivo_formatted']} - "
-            f"Gastos: {diferencias['efectivo']['gastos_operativos_formatted']} = "
+            f"Gastos: {diferencias['efectivo']['gastos_operativos_formatted']}"
+            f"{prestamos_str}{desfase_str} = "
             f"{diferencias['efectivo']['suma_efectivo_ajustada_formatted']} vs "
             f"Consignar: {diferencias['efectivo']['efectivo_para_consignar_formatted']})"
         )
@@ -812,12 +850,24 @@ def validar_cierre(datos_alegra, metodos_pago_calculados, cash_result=None, exce
     logger.info(
         f"Validación de cierre: {validation_status.upper()} - {mensaje_validacion}"
     )
-    logger.info(
-        f"  EFECTIVO: Alegra {format_cop(efectivo_alegra)} + Excedente {format_cop(excedente_efectivo)} "
-        f"- Gastos {format_cop(gastos_operativos)} = {format_cop(suma_efectivo_ajustada)} vs "
-        f"Consignar {format_cop(efectivo_para_consignar)} (diff: {format_cop(diff_efectivo)}) "
-        f"{'✓' if efectivo_validado else '✗'}"
-    )
+
+    # Construir mensaje de logging con préstamos y desfases
+    log_parts = [
+        f"  EFECTIVO: Alegra {format_cop(efectivo_alegra)}",
+        f"+ Excedente {format_cop(excedente_efectivo)}",
+        f"- Gastos {format_cop(gastos_operativos)}"
+    ]
+
+    if prestamos > 0:
+        log_parts.append(f"- Préstamos {format_cop(prestamos)}")
+
+    if total_desfase != 0:
+        log_parts.append(f"+ Desfases {format_cop(total_desfase)}")
+
+    log_parts.append(f"= {format_cop(suma_efectivo_ajustada)} vs Consignar {format_cop(efectivo_para_consignar)}")
+    log_parts.append(f"(diff: {format_cop(diff_efectivo)}) {'✓' if efectivo_validado else '✗'}")
+
+    logger.info(" ".join(log_parts))
     logger.info(
         f"  Transferencias Alegra: {format_cop(transferencia_alegra)} vs "
         f"Registrado: {format_cop(transferencias_registradas)} (diff: {format_cop(diff_transferencia)})"
@@ -878,6 +928,25 @@ def preparar_respuesta_completa(
     """
     from app.utils.timezone import get_colombia_timestamp
 
+    # Preparar detalle del cálculo del valor a consignar
+    venta_efectivo = cash_result.get("adjustments", {}).get("venta_efectivo_diaria_alegra", 0)
+    gastos_operativos = cash_result.get("adjustments", {}).get("gastos_operativos", 0)
+    total_desfase = desfases_procesados.get("total_desfase", 0) if desfases_procesados else 0
+    valor_consignar = cash_result.get("consignar", {}).get("efectivo_para_consignar_final", 0)
+
+    detalle_consignacion = {
+        "venta_efectivo": venta_efectivo,
+        "venta_efectivo_formatted": format_cop(venta_efectivo),
+        "gastos_operativos": gastos_operativos,
+        "gastos_operativos_formatted": format_cop(gastos_operativos),
+        "total_desfase": total_desfase,
+        "total_desfase_formatted": format_cop(total_desfase),
+        "valor_consignar": valor_consignar,
+        "valor_consignar_formatted": format_cop(valor_consignar),
+        "formula": "Venta efectivo - Gastos operativos + Desfases = Valor a consignar",
+        "detalle": f"{format_cop(venta_efectivo)} - {format_cop(gastos_operativos)} + {format_cop(total_desfase)} = {format_cop(valor_consignar)}"
+    }
+
     respuesta = {
         "success": True,
         "request_datetime": datetime_info['iso'],
@@ -890,6 +959,7 @@ def preparar_respuesta_completa(
         "username_used": username,
         "alegra": datos_alegra,
         "cash_count": cash_result,
+        "detalle_consignacion": detalle_consignacion,
         "excedentes_detalle": excedentes_procesados["excedentes_detalle"],
         "gastos_operativos_nota": payload_original.get("gastos_operativos_nota", ""),
         "prestamos_nota": payload_original.get("prestamos_nota", ""),
