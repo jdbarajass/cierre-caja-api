@@ -217,7 +217,8 @@ def sum_payments():
         conteo_billetes=conteo_billetes,
         excedente=excedente_efectivo,
         gastos_operativos=cash_request.gastos_operativos,
-        prestamos=cash_request.prestamos
+        prestamos=cash_request.prestamos,
+        desfases=desfases_procesados['total_desfase']
     )
 
     # Agregar los totales de excedentes al cash_result para incluir en adjustments

@@ -210,7 +210,8 @@ class CashCalculator:
         excedente: float,
         total_base: int,
         gastos_operativos: float,
-        prestamos: float
+        prestamos: float,
+        desfases: float = 0
     ) -> int:
         """
         Calcula la venta en efectivo para comparar con Alegra
@@ -218,7 +219,9 @@ class CashCalculator:
         NOTA IMPORTANTE (Escenario A):
         - El total_general es el efectivo contado DESPUÉS de sacar gastos operativos y préstamos
         - Alegra reporta el efectivo vendido ANTES de sacar gastos operativos y préstamos
+        - Los desfases (faltantes/sobrantes) NO afectan lo que Alegra reportó en ventas
         - Por lo tanto, sumamos gastos y préstamos al resultado para obtener la venta original
+        - NO sumamos desfases porque estos son diferencias en el conteo físico, no en las ventas
 
         Fórmula: TOTAL_GENERAL - EXCEDENTE - BASE + GASTOS_OPERATIVOS + PRESTAMOS
 
@@ -228,6 +231,7 @@ class CashCalculator:
             total_base: Total de la base
             gastos_operativos: Gastos operativos que ya fueron sacados del efectivo
             prestamos: Préstamos que ya fueron sacados del efectivo
+            desfases: Total de desfases (negativo si faltante, positivo si sobrante) - NO SE USA
 
         Returns:
             Venta en efectivo calculada (para comparar con Alegra)
@@ -249,7 +253,8 @@ class CashCalculator:
         conteo_billetes: Dict[int, int],
         excedente: float,
         gastos_operativos: float,
-        prestamos: float
+        prestamos: float,
+        desfases: float = 0
     ) -> Dict:
         """
         Procesa un cierre de caja completo
@@ -258,6 +263,7 @@ class CashCalculator:
         - El parámetro 'excedente' debe ser solo el excedente en EFECTIVO
         - Los gastos operativos ya fueron sacados físicamente del efectivo antes de contar
         - El efectivo contado (total_general) ya refleja los gastos descontados
+        - Los desfases (faltantes/sobrantes) también afectan el efectivo contado
 
         Args:
             conteo_monedas: Dict {denominación: cantidad}
@@ -265,6 +271,7 @@ class CashCalculator:
             excedente: Excedente en EFECTIVO del día (no incluir datafono, nequi, etc)
             gastos_operativos: Gastos operativos que ya fueron sacados físicamente
             prestamos: Préstamos realizados
+            desfases: Total de desfases (negativo si faltante, positivo si sobrante)
 
         Returns:
             Dict con toda la información del cierre
@@ -299,7 +306,8 @@ class CashCalculator:
             excedente,
             base_info['total_base'],
             gastos_operativos,
-            prestamos
+            prestamos,
+            desfases
         )
 
         # 5. Construir respuesta completa
@@ -931,6 +939,7 @@ def preparar_respuesta_completa(
     # Preparar detalle del cálculo del valor a consignar
     venta_efectivo = cash_result.get("adjustments", {}).get("venta_efectivo_diaria_alegra", 0)
     gastos_operativos = cash_result.get("adjustments", {}).get("gastos_operativos", 0)
+    prestamos = cash_result.get("adjustments", {}).get("prestamos", 0)
     total_desfase = desfases_procesados.get("total_desfase", 0) if desfases_procesados else 0
     valor_consignar = cash_result.get("consignar", {}).get("efectivo_para_consignar_final", 0)
 
@@ -939,12 +948,14 @@ def preparar_respuesta_completa(
         "venta_efectivo_formatted": format_cop(venta_efectivo),
         "gastos_operativos": gastos_operativos,
         "gastos_operativos_formatted": format_cop(gastos_operativos),
+        "prestamos": prestamos,
+        "prestamos_formatted": format_cop(prestamos),
         "total_desfase": total_desfase,
         "total_desfase_formatted": format_cop(total_desfase),
         "valor_consignar": valor_consignar,
         "valor_consignar_formatted": format_cop(valor_consignar),
-        "formula": "Venta efectivo - Gastos operativos + Desfases = Valor a consignar",
-        "detalle": f"{format_cop(venta_efectivo)} - {format_cop(gastos_operativos)} + {format_cop(total_desfase)} = {format_cop(valor_consignar)}"
+        "formula": "Venta efectivo - Gastos operativos - Préstamos + Desfases = Valor a consignar",
+        "detalle": f"{format_cop(venta_efectivo)} - {format_cop(gastos_operativos)} - {format_cop(prestamos)} + {format_cop(total_desfase)} = {format_cop(valor_consignar)}"
     }
 
     respuesta = {
