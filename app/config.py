@@ -54,6 +54,11 @@ class Config:
     # Zona horaria
     TIMEZONE = os.getenv('TIMEZONE', 'America/Bogota')
 
+    # Frontend path - Ruta al directorio dist del frontend
+    # En PythonAnywhere, configurar esta variable de entorno con la ruta correcta
+    # Ejemplo: /home/jdbarajass/cierre-caja-frontend/dist
+    FRONTEND_DIST_PATH = os.getenv('FRONTEND_DIST_PATH', None)
+
     # Rate Limiting
     RATELIMIT_STORAGE_URL = os.getenv('RATELIMIT_STORAGE_URL', 'memory://')
     RATELIMIT_DEFAULT = os.getenv('RATELIMIT_DEFAULT', '200 per day;50 per hour')

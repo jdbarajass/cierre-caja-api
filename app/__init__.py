@@ -2,7 +2,7 @@
 Sistema de Cierre de Caja - KOAJ Puerto Carreño
 Flask Application Factory
 """
-from flask import Flask, request
+from flask import Flask, request, send_from_directory, send_file
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -124,12 +124,81 @@ def create_app(config_class=Config):
     # Configurar manejadores de errores
     setup_error_handlers(app)
 
+    # Configurar servido del frontend (React SPA)
+    # Determinar la ruta absoluta del directorio dist del frontend
+    # Prioridad: 1) Variable de entorno FRONTEND_DIST_PATH, 2) Ruta relativa por defecto
+    if config_class.FRONTEND_DIST_PATH:
+        frontend_dist = config_class.FRONTEND_DIST_PATH
+        app.logger.info(f"Usando frontend desde variable de entorno: {frontend_dist}")
+    else:
+        # Ruta por defecto en desarrollo local: ../cierre-caja-frontend/dist
+        frontend_dist = os.path.join(os.path.dirname(os.path.dirname(__file__)), '..', 'cierre-caja-frontend', 'dist')
+        frontend_dist = os.path.abspath(frontend_dist)
+        app.logger.info(f"Usando frontend desde ruta relativa: {frontend_dist}")
+
+    # Verificar si el directorio existe
+    if not os.path.isdir(frontend_dist):
+        app.logger.warning(f"ADVERTENCIA: Directorio del frontend no encontrado: {frontend_dist}")
+        app.logger.warning("El servidor API funcionará, pero las rutas del frontend devolverán error 404")
+        app.logger.warning("Configura la variable de entorno FRONTEND_DIST_PATH con la ruta correcta")
+
+    # Servir archivos estáticos del frontend (JS, CSS, imágenes, etc.)
+    @app.route('/assets/<path:path>')
+    def serve_static_assets(path):
+        """Sirve archivos estáticos (JS, CSS, etc.) desde la carpeta dist/assets"""
+        try:
+            return send_from_directory(os.path.join(frontend_dist, 'assets'), path)
+        except Exception as e:
+            app.logger.error(f"Error sirviendo asset {path}: {e}")
+            return {"error": "Asset no encontrado"}, 404
+
+    # Catch-all route: sirve index.html para todas las rutas que no sean de la API
+    # Esto permite que React Router maneje el enrutamiento del lado del cliente
+    @app.route('/', defaults={'path': ''})
+    @app.route('/<path:path>')
+    def serve_frontend(path):
+        """
+        Sirve el frontend React para todas las rutas no-API.
+        Esto permite que React Router maneje la navegación del lado del cliente.
+        """
+        # Si la ruta es de la API, dejar que Flask la maneje (no debería llegar aquí)
+        api_prefixes = [
+            'api/', 'auth/', 'health', 'flasgger_static/',
+            'apispec.json', 'api/docs', 'apidocs'
+        ]
+        if any(path.startswith(prefix) for prefix in api_prefixes):
+            # Esto no debería ejecutarse ya que los blueprints tienen prioridad
+            return {"error": "Ruta de API no encontrada"}, 404
+
+        # Si la ruta apunta a un archivo específico que existe, servirlo
+        if path and '.' in path:
+            file_path = os.path.join(frontend_dist, path)
+            if os.path.isfile(file_path):
+                try:
+                    return send_file(file_path)
+                except Exception as e:
+                    app.logger.error(f"Error sirviendo archivo {path}: {e}")
+
+        # Para todas las demás rutas (incluyendo /dashboard, /monthly-sales, etc.)
+        # servir index.html y dejar que React Router maneje la navegación
+        try:
+            index_path = os.path.join(frontend_dist, 'index.html')
+            if os.path.isfile(index_path):
+                return send_file(index_path)
+            else:
+                app.logger.error(f"index.html no encontrado en {frontend_dist}")
+                return {"error": "Frontend no encontrado. Verifica que el build esté desplegado."}, 404
+        except Exception as e:
+            app.logger.error(f"Error sirviendo index.html: {e}")
+            return {"error": "Error interno del servidor"}, 500
+
     # Log de inicio
     app.logger.info("=" * 60)
     app.logger.info("Sistema de Cierre de Caja - KOAJ Puerto Carreño")
     app.logger.info(f"Versión: 2.0.0")
     app.logger.info(f"Ambiente: {'Producción' if not app.config['DEBUG'] else 'Desarrollo'}")
     app.logger.info(f"CORS Origins: {allowed_origins}")
+    app.logger.info(f"Sirviendo frontend desde: {frontend_dist}")
     app.logger.info("=" * 60)
 
     return app
