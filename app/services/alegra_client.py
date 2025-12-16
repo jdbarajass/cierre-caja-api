@@ -52,13 +52,16 @@ class AlegraClient:
 
     def get_invoices_by_date(self, date: str) -> List[Dict]:
         """
-        Obtiene las facturas de Alegra para una fecha específica
+        Obtiene TODAS las facturas de Alegra para una fecha específica usando paginación
+
+        Este método implementa paginación automática para obtener todas las facturas del día,
+        sin importar si son más de 30 (límite por defecto de Alegra).
 
         Args:
             date: Fecha en formato YYYY-MM-DD
 
         Returns:
-            Lista de facturas
+            Lista completa de facturas del día
 
         Raises:
             AlegraTimeoutError: Si la petición excede el timeout
@@ -66,13 +69,21 @@ class AlegraClient:
             AlegraConnectionError: Para otros errores de conexión
         """
         url = f"{self.base_url}/invoices"
-        params = {
-            "date": date
-        }
+        all_invoices = []
+        start = 0  # Empezar desde 0 para no omitir la primera factura
+        limit = 30  # Máximo permitido por Alegra
+        total_invoices = None
 
-        logger.info(f"Consultando facturas de Alegra para fecha: {date}")
+        logger.info(f"Consultando facturas de Alegra para fecha: {date} (con paginación automática)")
 
         try:
+            # Primera petición con metadata para conocer el total de facturas
+            params = {
+                "date": date,
+                "start": start,
+                "metadata": "true"
+            }
+
             response = self.session.get(
                 url,
                 params=params,
@@ -107,15 +118,68 @@ class AlegraClient:
 
             # Intentar parsear JSON
             response.raise_for_status()
-            data = response.json()
+            response_data = response.json()
 
-            # Validar que sea una lista
+            # Con metadata=true, la respuesta tiene estructura: {"metadata": {...}, "data": [...]}
+            if isinstance(response_data, dict):
+                metadata = response_data.get("metadata", {})
+                total_invoices = metadata.get("total", 0)
+                data = response_data.get("data", [])
+                logger.info(f"Metadata recibido: Total de facturas para {date}: {total_invoices}")
+            else:
+                # Si por alguna razón no viene con metadata, asumir que es la lista directa
+                data = response_data if isinstance(response_data, list) else []
+                total_invoices = len(data)
+                logger.warning(f"No se recibió metadata, asumiendo {total_invoices} facturas")
+
+            # Validar que data sea una lista
             if not isinstance(data, list):
                 logger.warning(f"Respuesta de Alegra no es una lista: {type(data)}")
                 data = []
 
-            logger.info(f"✓ {len(data)} facturas obtenidas de Alegra para {date}")
-            return data
+            # Agregar las primeras facturas
+            all_invoices.extend(data)
+            logger.info(f"✓ Primera página: {len(data)} facturas obtenidas (de {total_invoices} totales)")
+
+            # Si hay más facturas, hacer peticiones adicionales
+            if total_invoices > limit:
+                pages_needed = (total_invoices + limit - 1) // limit  # Redondeo hacia arriba
+                logger.info(f"Se necesitan {pages_needed} páginas para obtener todas las facturas")
+
+                # Iterar desde la página 2 en adelante
+                for page in range(2, pages_needed + 1):
+                    start = (page - 1) * limit  # Página 2: start=30, Página 3: start=60, etc.
+                    params = {
+                        "date": date,
+                        "start": start
+                    }
+
+                    logger.info(f"Consultando página {page}/{pages_needed} (start={start})...")
+
+                    response = self.session.get(
+                        url,
+                        params=params,
+                        timeout=self.timeout
+                    )
+
+                    response.raise_for_status()
+                    page_data = response.json()
+
+                    # Manejar respuesta con o sin metadata
+                    if isinstance(page_data, dict):
+                        page_invoices = page_data.get("data", [])
+                    else:
+                        page_invoices = page_data if isinstance(page_data, list) else []
+
+                    if not isinstance(page_invoices, list):
+                        logger.warning(f"Página {page} no retornó lista válida")
+                        continue
+
+                    all_invoices.extend(page_invoices)
+                    logger.info(f"✓ Página {page}/{pages_needed}: {len(page_invoices)} facturas obtenidas. Total acumulado: {len(all_invoices)}")
+
+            logger.info(f"✓ TOTAL: {len(all_invoices)} facturas obtenidas para {date} (esperadas: {total_invoices})")
+            return all_invoices
 
         except requests.exceptions.Timeout:
             logger.error(f"Timeout al conectar con Alegra (>{self.timeout}s)")
