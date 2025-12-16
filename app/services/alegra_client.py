@@ -775,6 +775,81 @@ class AlegraClient:
                 details={'error': str(e)}
             )
 
+    def get_sales_comparison_year_over_year(self, current_date: str) -> Dict:
+        """
+        Obtiene comparación de ventas del día actual vs mismo día del año anterior
+
+        Args:
+            current_date: Fecha actual en formato YYYY-MM-DD
+
+        Returns:
+            Diccionario con ventas del día actual, año anterior, y comparación
+        """
+        from datetime import datetime, timedelta
+
+        # Calcular fecha del año anterior (mismo día y mes)
+        try:
+            current_dt = datetime.strptime(current_date, '%Y-%m-%d')
+            previous_year_dt = current_dt.replace(year=current_dt.year - 1)
+            previous_year_date = previous_year_dt.strftime('%Y-%m-%d')
+        except ValueError:
+            # Caso especial: 29 de febrero en año bisiesto
+            current_dt = datetime.strptime(current_date, '%Y-%m-%d')
+            previous_year_dt = current_dt - timedelta(days=365)
+            previous_year_date = previous_year_dt.strftime('%Y-%m-%d')
+
+        logger.info(f"Obteniendo comparación: {current_date} vs {previous_year_date}")
+
+        # Obtener ventas del día actual
+        current_sales = self.get_sales_summary(current_date)
+
+        # Obtener ventas del año anterior
+        previous_sales = self.get_sales_summary(previous_year_date)
+
+        # Extraer totales
+        current_total = current_sales.get('total_sale', {}).get('total', 0)
+        previous_total = previous_sales.get('total_sale', {}).get('total', 0)
+
+        # Calcular diferencia y porcentaje
+        difference = current_total - previous_total
+
+        if previous_total > 0:
+            percentage_change = ((current_total - previous_total) / previous_total) * 100
+        else:
+            # Si el año anterior fue 0, pero ahora hay ventas, es crecimiento infinito
+            percentage_change = 100.0 if current_total > 0 else 0.0
+
+        # Construir respuesta
+        comparison = {
+            'current': {
+                'date': current_date,
+                'total': current_total,
+                'formatted': format_cop(current_total),
+                'invoices_count': current_sales.get('invoices_summary', {}).get('active_invoices', 0)
+            },
+            'previous_year': {
+                'date': previous_year_date,
+                'total': previous_total,
+                'formatted': format_cop(previous_total),
+                'invoices_count': previous_sales.get('invoices_summary', {}).get('active_invoices', 0)
+            },
+            'comparison': {
+                'difference': difference,
+                'difference_formatted': format_cop(abs(difference)),
+                'percentage_change': round(percentage_change, 2),
+                'is_growth': difference >= 0,
+                'growth_label': 'crecimiento' if difference >= 0 else 'decrecimiento'
+            }
+        }
+
+        logger.info(
+            f"Comparación YoY - Actual: {format_cop(current_total)}, "
+            f"Anterior: {format_cop(previous_total)}, "
+            f"Cambio: {percentage_change:.2f}%"
+        )
+
+        return comparison
+
     def health_check(self) -> bool:
         """
         Verifica si el servicio de Alegra está disponible

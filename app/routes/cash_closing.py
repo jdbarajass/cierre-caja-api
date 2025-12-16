@@ -481,3 +481,164 @@ def get_monthly_sales():
             "timezone": "America/Bogota"
         }
         return jsonify(error_response), 500
+
+
+@bp.route('/sales_comparison_yoy', methods=['GET', 'OPTIONS'])
+@token_required
+@role_required_any(['admin', 'sales'])
+def get_sales_comparison_yoy():
+    """
+    Obtiene comparación de ventas año sobre año (Year over Year)
+    Compara ventas del día actual y mes actual con el mismo período del año anterior
+    ---
+    tags:
+      - Ventas
+    parameters:
+      - in: query
+        name: date
+        type: string
+        required: false
+        description: Fecha para comparar (YYYY-MM-DD). Si no se proporciona, usa la fecha actual
+    responses:
+      200:
+        description: Comparación de ventas año sobre año
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+            daily_comparison:
+              type: object
+              description: Comparación de ventas del día
+            monthly_comparison:
+              type: object
+              description: Comparación de ventas del mes
+      500:
+        description: Error al consultar Alegra
+    """
+    # Manejar preflight OPTIONS request
+    if request.method == "OPTIONS":
+        return "", 204
+
+    try:
+        # Obtener fecha desde query params o usar fecha actual
+        colombia_now = get_colombia_now()
+        date_str = request.args.get('date')
+        if not date_str:
+            date_str = colombia_now.strftime('%Y-%m-%d')
+
+        current_app.logger.info(f"Consultando comparación año sobre año para: {date_str}")
+
+        # Crear cliente de Alegra
+        alegra_client = AlegraClient(
+            username=Config.ALEGRA_USER,
+            password=Config.ALEGRA_PASS,
+            base_url=Config.ALEGRA_API_BASE_URL,
+            timeout=Config.ALEGRA_TIMEOUT
+        )
+
+        # Obtener comparación diaria
+        daily_comparison = alegra_client.get_sales_comparison_year_over_year(date_str)
+
+        # Calcular comparación mensual
+        from datetime import datetime
+        current_dt = datetime.strptime(date_str, '%Y-%m-%d')
+
+        # Mes actual
+        start_current_month = current_dt.replace(day=1).strftime('%Y-%m-%d')
+        end_current_month = date_str
+
+        # Mismo mes del año anterior
+        previous_year_dt = current_dt.replace(year=current_dt.year - 1)
+        start_previous_month = previous_year_dt.replace(day=1).strftime('%Y-%m-%d')
+        end_previous_month = previous_year_dt.strftime('%Y-%m-%d')
+
+        # Obtener ventas del mes actual
+        current_month_sales = alegra_client.get_monthly_sales_summary(
+            start_current_month,
+            end_current_month
+        )
+
+        # Obtener ventas del mismo mes del año anterior
+        previous_month_sales = alegra_client.get_monthly_sales_summary(
+            start_previous_month,
+            end_previous_month
+        )
+
+        # Calcular diferencia y porcentaje mensual
+        current_month_total = current_month_sales.get('total_vendido', {}).get('total', 0)
+        previous_month_total = previous_month_sales.get('total_vendido', {}).get('total', 0)
+        month_difference = current_month_total - previous_month_total
+
+        if previous_month_total > 0:
+            month_percentage_change = ((current_month_total - previous_month_total) / previous_month_total) * 100
+        else:
+            month_percentage_change = 100.0 if current_month_total > 0 else 0.0
+
+        from app.utils.formatting import format_cop
+
+        monthly_comparison = {
+            'current': {
+                'period': f"{start_current_month} a {end_current_month}",
+                'total': current_month_total,
+                'formatted': format_cop(current_month_total),
+                'invoices_count': current_month_sales.get('cantidad_facturas', 0)
+            },
+            'previous_year': {
+                'period': f"{start_previous_month} a {end_previous_month}",
+                'total': previous_month_total,
+                'formatted': format_cop(previous_month_total),
+                'invoices_count': previous_month_sales.get('cantidad_facturas', 0)
+            },
+            'comparison': {
+                'difference': month_difference,
+                'difference_formatted': format_cop(abs(month_difference)),
+                'percentage_change': round(month_percentage_change, 2),
+                'is_growth': month_difference >= 0,
+                'growth_label': 'crecimiento' if month_difference >= 0 else 'decrecimiento'
+            }
+        }
+
+        response = {
+            "success": True,
+            "server_timestamp": get_colombia_timestamp(),
+            "timezone": "America/Bogota",
+            "daily_comparison": daily_comparison,
+            "monthly_comparison": monthly_comparison
+        }
+
+        current_app.logger.info("=" * 80)
+        current_app.logger.info("COMPARACIÓN AÑO SOBRE AÑO")
+        current_app.logger.info("-" * 80)
+        current_app.logger.info(f"DÍA ACTUAL ({daily_comparison['current']['date']}): {daily_comparison['current']['formatted']}")
+        current_app.logger.info(f"MISMO DÍA AÑO ANTERIOR ({daily_comparison['previous_year']['date']}): {daily_comparison['previous_year']['formatted']}")
+        current_app.logger.info(f"CAMBIO DIARIO: {daily_comparison['comparison']['percentage_change']}% ({daily_comparison['comparison']['growth_label']})")
+        current_app.logger.info("-" * 80)
+        current_app.logger.info(f"MES ACTUAL: {monthly_comparison['current']['formatted']}")
+        current_app.logger.info(f"MISMO MES AÑO ANTERIOR: {monthly_comparison['previous_year']['formatted']}")
+        current_app.logger.info(f"CAMBIO MENSUAL: {monthly_comparison['comparison']['percentage_change']}% ({monthly_comparison['comparison']['growth_label']})")
+        current_app.logger.info("=" * 80)
+
+        return jsonify(response), 200
+
+    except AlegraConnectionError as e:
+        current_app.logger.error(f"Error de conexión con Alegra: {str(e)}")
+        error_response = {
+            "success": False,
+            "error": "Error al conectar con Alegra",
+            "details": str(e),
+            "server_timestamp": get_colombia_timestamp(),
+            "timezone": "America/Bogota"
+        }
+        return jsonify(error_response), 502
+
+    except Exception as e:
+        current_app.logger.error(f"Error inesperado: {str(e)}", exc_info=True)
+        error_response = {
+            "success": False,
+            "error": "Error inesperado al procesar la solicitud",
+            "details": str(e),
+            "server_timestamp": get_colombia_timestamp(),
+            "timezone": "America/Bogota"
+        }
+        return jsonify(error_response), 500
