@@ -77,7 +77,7 @@ def create_app(config_class=Config):
     limiter = Limiter(
         app=app,
         key_func=get_remote_address,
-        default_limits=["200 per day", "50 per hour"],
+        default_limits=["50000 per day", "12000 per hour"],
         storage_uri="memory://"
     )
 
